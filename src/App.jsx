@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
+import { getAll, setItem, updateItem, deleteItem, listenTo } from './db'
 import logo from './assets/logo.png'
 import logoBlack from './assets/logo - black.png'
 
@@ -119,72 +120,9 @@ function LoyaltyBar({ washCount, big }) {
   )
 }
 
-/* ── GantiPasswordModal ── */
-function GantiPasswordModal({ onClose, currentUser, updateUser, writeAuditLog }) {
-  const isMobile = useIsMobile()
-  const [oldPw,  setOldPw]  = useState('')
-  const [newPw,  setNewPw]  = useState('')
-  const [confPw, setConfPw] = useState('')
-  const [errors, setErrors] = useState({})
-  const [success,setSuccess] = useState(false)
-
-  const clr = (f) => setErrors(p => ({ ...p, [f]: undefined }))
-
-  const submit = () => {
-    const e = {}
-    if (oldPw !== currentUser.password)  e.old  = 'Password lama salah'
-    if (newPw.length < 6)                e.new  = 'Password minimal 6 karakter'
-    else if (newPw === oldPw)            e.new  = 'Password baru harus berbeda dari password lama'
-    if (newPw !== confPw)                e.conf = 'Konfirmasi password tidak cocok'
-    if (Object.values(e).some(Boolean)) { setErrors(e); return }
-    updateUser({ ...currentUser, password: newPw })
-    writeAuditLog?.('pengaturan', 'edit', currentUser.username, [{ field:'password', from:'***', to:'***' }])
-    setSuccess(true)
-    setTimeout(onClose, 1500)
-  }
-
-  const Field = ({ id, label: lb, val, set, ph, err }) => (
-    <div>
-      {lbl(lb)}
-      <input id={id} type="password" value={val} onChange={e=>{set(e.target.value);clr(id)}} placeholder={ph} style={inputBase} />
-      {err && <div style={{ color:C.red, fontFamily:'Barlow, sans-serif', fontSize:12, marginTop:4 }}>{err}</div>}
-    </div>
-  )
-
-  return (
-    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:1000, display:'flex', alignItems:isMobile?'flex-end':'center', justifyContent:'center', padding:isMobile?0:24 }}>
-      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:isMobile?'16px 16px 0 0':16, padding:isMobile?'28px 20px 36px':36, width:isMobile?'100%':420 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:22 }}>
-          <div>
-            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:22, color:C.white }}>GANTI PASSWORD</div>
-            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, marginTop:3 }}>Login sebagai: {currentUser.name}</div>
-          </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:22, padding:0, lineHeight:1 }}>×</button>
-        </div>
-
-        {success ? (
-          <div style={{ textAlign:'center', padding:'24px 0' }}>
-            <div style={{ fontSize:42, marginBottom:12, color:C.green }}>✓</div>
-            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:16, color:C.green, fontWeight:600 }}>Password berhasil diubah</div>
-          </div>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            <Field id="old"  label="Password Lama"   val={oldPw}  set={setOldPw}  ph="Masukkan password saat ini" err={errors.old} />
-            <Field id="new"  label="Password Baru"   val={newPw}  set={setNewPw}  ph="Minimal 6 karakter"         err={errors.new} />
-            <Field id="conf" label="Konfirmasi Baru" val={confPw} set={setConfPw} ph="Ulangi password baru"       err={errors.conf} />
-            <div style={{ display:'flex', gap:10, marginTop:4 }}>
-              <button onClick={onClose} style={btnGhost}>Batal</button>
-              <button onClick={submit} style={btnRed}>SIMPAN PASSWORD</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 /* ── Nav ── */
-function Nav({ user, page, setPage, logout, onChangePassword }) {
+function Nav({ user, page, setPage, logout }) {
   const isMobile = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const tabs = ALL_TABS.filter(t => user.permissions.includes(t.key))
@@ -210,7 +148,6 @@ function Nav({ user, page, setPage, logout, onChangePassword }) {
               <div style={{ fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:13, color:C.white }}>{user.name}</div>
               <div style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted }}>{user.permissions.includes('pengaturan')?'Administrator':'Pengguna'}</div>
             </div>
-            <button onClick={()=>{setDrawerOpen(false);onChangePassword()}} style={{ display:'block', width:'100%', background:'none', border:'none', padding:'14px 20px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:14, color:C.muted, cursor:'pointer', minHeight:44 }}>🔑 Ganti Password</button>
             <button onClick={logout} style={{ display:'block', width:'100%', background:'none', border:'none', padding:'14px 20px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:14, color:C.red, cursor:'pointer', minHeight:44 }}>Keluar</button>
           </div>
         </div>
@@ -233,7 +170,6 @@ function Nav({ user, page, setPage, logout, onChangePassword }) {
           <div style={{ fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:13, color:C.white }}>{user.name}</div>
           <div style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted }}>{user.permissions.includes('pengaturan')?'Administrator':'Pengguna'}</div>
         </div>
-        <button onClick={onChangePassword} style={{ background:'none', border:`1px solid ${C.border}`, color:C.muted, cursor:'pointer', padding:'6px 12px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:500 }} title="Ganti Password">🔑</button>
         <button onClick={logout} style={{ background:'none', border:`1px solid ${C.border}`, color:C.muted, cursor:'pointer', padding:'6px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:500 }}>Keluar</button>
       </div>
     </nav>
@@ -1529,15 +1465,20 @@ function MotorTypeModal({ mode, entry, onSave, onClose, addToast }) {
   )
 }
 
-function SettingsPage({ users, addUser, updateUser, deleteUser, motorTypes, addMotorType, updateMotorType, deleteMotorType, toggleMotorType, workers, addWorker, updateWorker, deleteWorker, toggleWorker, auditLog, currentUser, addToast }) {
+function SettingsPage({ users, addUser, updateUser, deleteUser, motorTypes, addMotorType, updateMotorType, deleteMotorType, toggleMotorType, workers, addWorker, updateWorker, deleteWorker, toggleWorker, auditLog, currentUser, writeAuditLog, addToast }) {
   const isMobile = useIsMobile()
-  const isOwner = currentUser?.username === 'owner'
-  const [tab,      setTab]      = useState('pengguna')
+  const isOwner  = currentUser?.username === 'owner'
+  const [tab,      setTab]      = useState(isOwner ? 'pengguna' : 'gantipw')
   const [logFrom,  setLogFrom]  = useState(() => new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10))
   const [logTo,    setLogTo]    = useState(todayStr())
   const [logMod,   setLogMod]   = useState('all')
   const [logSrch,  setLogSrch]  = useState('')
   const [logPg,    setLogPg]    = useState(0)
+  const [oldPw,    setOldPw]    = useState('')
+  const [newPw,    setNewPw]    = useState('')
+  const [confPw,   setConfPw]   = useState('')
+  const [pwErrors, setPwErrors] = useState({})
+  const [pwSuccess,setPwSuccess]= useState(false)
   const [newName,     setNewName]     = useState('')
   const [newUsername, setNewUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -1547,20 +1488,47 @@ function SettingsPage({ users, addUser, updateUser, deleteUser, motorTypes, addM
   const [motorModal,  setMotorModal]  = useState(null)
   const [workerModal, setWorkerModal] = useState(null)
 
+  const clrPw = (f) => setPwErrors(p=>({...p,[f]:undefined}))
+  const handlePwSubmit = () => {
+    const e = {}
+    if (oldPw !== currentUser.password) e.old = 'Password lama salah'
+    if (newPw.length < 6) e.new = 'Password minimal 6 karakter'
+    else if (newPw === oldPw) e.new = 'Password baru harus berbeda dari password lama'
+    if (newPw !== confPw) e.conf = 'Konfirmasi password tidak cocok'
+    if (Object.values(e).some(Boolean)) { setPwErrors(e); return }
+    updateUser({ ...currentUser, password:newPw })
+    writeAuditLog?.('pengaturan', 'edit', currentUser.username, [{ field:'password', from:'***', to:'***' }])
+    setPwSuccess(true)
+    setOldPw(''); setNewPw(''); setConfPw(''); setPwErrors({})
+    setTimeout(() => setPwSuccess(false), 2000)
+  }
+
   const handleAdd = () => {
-    if (!newName.trim())       { addToast('Masukkan nama','error');              return }
-    if (!newUsername.trim())   { addToast('Masukkan username','error');          return }
-    if (!newPassword.trim())   { addToast('Masukkan password','error');          return }
-    if (newPerms.length===0)   { addToast('Pilih minimal 1 akses tab','error'); return }
+    if (!newName.trim())     { addToast('Masukkan nama','error'); return }
+    if (!newUsername.trim()) { addToast('Masukkan username','error'); return }
+    if (!newPassword.trim()) { addToast('Masukkan password','error'); return }
+    if (newPerms.length===0) { addToast('Pilih minimal 1 akses tab','error'); return }
     if (users.find(u=>u.username===newUsername.trim())) { addToast('Username sudah digunakan','error'); return }
     addUser({ id:'u'+Date.now(), username:newUsername.trim(), password:newPassword.trim(), name:newName.trim(), permissions:newPerms })
-    addToast(`Pengguna ${newName.trim()} berhasil ditambahkan`, 'success')
+    writeAuditLog?.('pengaturan','add',newUsername.trim(),[{field:'user',from:'-',to:newName.trim()}])
+    addToast(`Pengguna ${newName.trim()} berhasil ditambahkan`,'success')
     setNewName(''); setNewUsername(''); setNewPassword(''); setNewPerms([])
   }
-  const startEdit    = (u) => { setEditingId(u.id); setEditPerms([...u.permissions]) }
-  const cancelEdit   = ()  => setEditingId(null)
-  const handleSave   = (u) => { if (editPerms.length===0){addToast('Pilih minimal 1 akses tab','error');return} updateUser({...u,permissions:editPerms}); addToast(`Akses ${u.name} diperbarui`,'success'); setEditingId(null) }
-  const handleDeleteUser = (u) => { deleteUser(u.id); addToast(`Pengguna ${u.name} dihapus`,'warn') }
+  const startEdit      = (u) => { setEditingId(u.id); setEditPerms([...u.permissions]) }
+  const cancelEdit     = ()  => setEditingId(null)
+  const handleSave     = (u) => {
+    if (editPerms.length===0) { addToast('Pilih minimal 1 akses tab','error'); return }
+    updateUser({...u, permissions:editPerms})
+    writeAuditLog?.('pengaturan','edit',u.username,[{field:'permissions',from:u.permissions.join(','),to:editPerms.join(',')}])
+    addToast(`Akses ${u.name} diperbarui`,'success')
+    setEditingId(null)
+  }
+  const handleDeleteUser = (u) => {
+    if (!window.confirm(`Hapus pengguna "${u.name}"?`)) return
+    deleteUser(u.id)
+    writeAuditLog?.('pengaturan','delete',u.username,[{field:'user',from:u.name,to:'-'}])
+    addToast(`Pengguna ${u.name} dihapus`,'warn')
+  }
   const isSA = (u) => u.id==='u1'
 
   const handleSaveMotor = (data) => {
@@ -1587,7 +1555,14 @@ function SettingsPage({ users, addUser, updateUser, deleteUser, motorTypes, addM
 
   const th  = { padding:'12px 20px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:0.5 }
   const thM = { padding:'12px 16px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:0.5 }
-  const TABS = [['pengguna','Pengguna'],['tipemotor','Tipe Motor'],['pekerja','Pekerja'],['logaktivitas','Log Aktivitas']]
+  const SETTINGS_TABS = [
+    { id:'pengguna',     label:'Pengguna',       ownerOnly:true  },
+    { id:'gantipw',      label:'Ganti Password', ownerOnly:false },
+    { id:'tipemotor',    label:'Tipe Motor',     ownerOnly:false },
+    { id:'pekerja',      label:'Pekerja',        ownerOnly:false },
+    { id:'logaktivitas', label:'Log Aktivitas',  ownerOnly:false },
+  ]
+  const visibleTabs = SETTINGS_TABS.filter(t => !t.ownerOnly || isOwner)
 
   return (
     <div style={{ padding:isMobile?'16px':'40px 24px', background:C.bg, minHeight:'100vh' }}>
@@ -1598,65 +1573,131 @@ function SettingsPage({ users, addUser, updateUser, deleteUser, motorTypes, addM
 
         {/* Sub-tab nav */}
         <div style={{ display:'flex', gap:4, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:4, marginBottom:isMobile?20:28, width:isMobile?'100%':'fit-content' }}>
-          {TABS.map(([key,label]) => (
-            <button key={key} onClick={()=>setTab(key)} style={{ background:tab===key?C.card:'none', border:'none', color:tab===key?C.white:C.muted, cursor:'pointer', padding:'8px 22px', borderRadius:7, fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:14, transition:'all 0.15s', flex:isMobile?1:undefined }}>{label}</button>
+          {visibleTabs.map(t => (
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{ background:tab===t.id?C.card:'none', border:'none', color:tab===t.id?C.white:C.muted, cursor:'pointer', padding:'8px 22px', borderRadius:7, fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:14, transition:'all 0.15s', flex:isMobile?1:undefined }}>{t.label}</button>
           ))}
         </div>
 
-        {/* ── Tab: Pengguna ── */}
-        {tab==='pengguna' && <>
-          {isOwner && (
-            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:28, marginBottom:24 }}>
-              <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white, marginBottom:20 }}>TAMBAH PENGGUNA BARU</div>
-              <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'1fr 1fr 1fr', gap:isMobile?10:12, marginBottom:16 }}>
-                <div>{lbl('Nama')}<input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nama pengguna" style={inputBase} /></div>
-                <div>{lbl('Username')}<input value={newUsername} onChange={e=>setNewUsername(e.target.value)} placeholder="username" style={inputBase} autoComplete="off" /></div>
-                <div>{lbl('Password')}<input value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="password" type="password" style={inputBase} autoComplete="new-password" /></div>
+        {/* ── Tab: Pengguna (owner only) ── */}
+        {tab==='pengguna' && isOwner && (
+          <div>
+            {/* Add user form */}
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:isMobile?16:24, marginBottom:24 }}>
+              <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white, marginBottom:18 }}>TAMBAH PENGGUNA BARU</div>
+              <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'1fr 1fr', gap:14 }}>
+                <div>
+                  {lbl('Nama Lengkap')}
+                  <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nama tampilan" style={inputBase} />
+                </div>
+                <div>
+                  {lbl('Username')}
+                  <input value={newUsername} onChange={e=>setNewUsername(e.target.value)} placeholder="Username login" style={inputBase} />
+                </div>
+                <div>
+                  {lbl('Password')}
+                  <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="Password awal" style={inputBase} />
+                </div>
               </div>
-              <div style={{ marginBottom:18 }}>{lbl('AKSES TAB')}<PermCheckboxes perms={newPerms} setPerms={setNewPerms} /></div>
-              <button onClick={handleAdd} style={{ ...btnRed, width:'auto', padding:'10px 26px', fontSize:15 }}>+ Tambah Pengguna</button>
+              <div style={{ marginTop:14 }}>
+                {lbl('Akses Tab')}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
+                  {PERM_META.map(p => {
+                    const on = newPerms.includes(p.key)
+                    return (
+                      <button key={p.key} onClick={()=>setNewPerms(prev=>on?prev.filter(x=>x!==p.key):[...prev,p.key])}
+                        style={{ background:on?p.bg:C.card, border:`1px solid ${on?p.color:C.border}`, color:on?p.color:C.muted, cursor:'pointer', padding:'5px 14px', borderRadius:20, fontFamily:'Barlow, sans-serif', fontSize:12, fontWeight:700, transition:'all 0.15s' }}>
+                        {p.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <button onClick={handleAdd} style={{ ...btnRed, marginTop:18, width:'auto', padding:'9px 28px' }}>+ Tambah Pengguna</button>
             </div>
-          )}
-          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
-            <div style={{ padding:'16px 24px', borderBottom:`1px solid ${C.border}` }}>
-              <span style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white }}>DAFTAR PENGGUNA</span>
-            </div>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead><tr style={{ background:C.card }}>{['Nama','Username','Akses','Aksi'].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
-              <tbody>
-                {users.map(u => (
-                  <Fragment key={u.id}>
-                    <tr style={{ borderBottom:editingId===u.id?'none':`1px solid ${C.border}` }}>
+
+            {/* User list */}
+            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white, marginBottom:14 }}>DAFTAR PENGGUNA</div>
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr style={{ background:C.card }}>
+                    {['Nama','Username','Akses Tab','Aksi'].map(h=><th key={h} style={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u.id} style={{ borderBottom:`1px solid ${C.border}` }}>
                       <td style={{ padding:'14px 20px', fontFamily:'Barlow, sans-serif', fontSize:14, color:C.white, fontWeight:600 }}>{u.name}</td>
-                      <td style={{ padding:'14px 20px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>{u.username}</td>
+                      <td style={{ padding:'14px 20px', fontFamily:'Courier New,monospace', fontSize:13, color:C.muted }}>{u.username}</td>
                       <td style={{ padding:'14px 20px' }}>
-                        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                          {u.permissions.map(p => { const m=PERM_META.find(x=>x.key===p); return m?<span key={p} style={{ display:'inline-block', padding:'2px 9px', borderRadius:4, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:600, background:m.bg, color:m.color }}>{m.label}</span>:null })}
-                        </div>
+                        {editingId===u.id ? (
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                            {PERM_META.map(p => {
+                              const on = editPerms.includes(p.key)
+                              return (
+                                <button key={p.key} onClick={()=>setEditPerms(prev=>on?prev.filter(x=>x!==p.key):[...prev,p.key])}
+                                  style={{ background:on?p.bg:C.card, border:`1px solid ${on?p.color:C.border}`, color:on?p.color:C.muted, cursor:'pointer', padding:'3px 12px', borderRadius:20, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, transition:'all 0.15s' }}>
+                                  {p.label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                            {(u.permissions||[]).map(pk => {
+                              const p = PERM_META.find(x=>x.key===pk)
+                              return p ? <span key={pk} style={{ display:'inline-block', padding:'2px 10px', borderRadius:20, background:p.bg, color:p.color, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700 }}>{p.label}</span> : null
+                            })}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding:'14px 20px' }}>
-                        {isOwner && !isSA(u) ? (
+                        {editingId===u.id ? (
                           <div style={{ display:'flex', gap:8 }}>
-                            <button onClick={()=>editingId===u.id?cancelEdit():startEdit(u)} style={{ background:'none', border:`1px solid ${editingId===u.id?C.muted:C.blue}`, color:editingId===u.id?C.muted:C.blue, cursor:'pointer', padding:'5px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:600 }}>{editingId===u.id?'Batal':'Edit Akses'}</button>
-                            <button onClick={()=>handleDeleteUser(u)} style={{ background:'none', border:`1px solid ${C.red}`, color:C.red, cursor:'pointer', padding:'5px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:600 }}>Hapus</button>
+                            <button onClick={()=>handleSave(u)} style={{ background:'none', border:`1px solid ${C.green}`, color:C.green, cursor:'pointer', padding:'5px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:600 }}>Simpan</button>
+                            <button onClick={cancelEdit} style={{ background:'none', border:`1px solid ${C.border}`, color:C.muted, cursor:'pointer', padding:'5px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:600 }}>Batal</button>
                           </div>
-                        ) : <span style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>—</span>}
+                        ) : (
+                          <div style={{ display:'flex', gap:8 }}>
+                            <button onClick={()=>startEdit(u)} style={{ background:'none', border:`1px solid ${C.blue}`, color:C.blue, cursor:'pointer', padding:'5px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:600 }}>Edit</button>
+                            {!isSA(u) && <button onClick={()=>handleDeleteUser(u)} style={{ background:'none', border:`1px solid ${C.red}`, color:C.red, cursor:'pointer', padding:'5px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13, fontWeight:600 }}>Hapus</button>}
+                          </div>
+                        )}
                       </td>
                     </tr>
-                    {editingId===u.id && isOwner && (
-                      <tr style={{ borderBottom:`1px solid ${C.border}`, background:'#0c1e2e' }}>
-                        <td colSpan={4} style={{ padding:'16px 20px' }}>
-                          <div style={{ marginBottom:14 }}>{lbl('UBAH AKSES TAB')}<PermCheckboxes perms={editPerms} setPerms={setEditPerms} /></div>
-                          <button onClick={()=>handleSave(u)} style={{ ...btnRed, width:'auto', padding:'8px 22px', fontSize:14 }}>Simpan Perubahan</button>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </>}
+        )}
+
+        {/* ── Tab: Ganti Password ── */}
+        {tab==='gantipw' && (
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:28, maxWidth:480 }}>
+            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white, marginBottom:6 }}>GANTI PASSWORD</div>
+            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, marginBottom:22 }}>Login sebagai: {currentUser?.name}</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <div>
+                {lbl('Password Lama')}
+                <input type="password" value={oldPw} onChange={e=>{setOldPw(e.target.value);clrPw('old')}} placeholder="Masukkan password saat ini" style={inputBase} />
+                {pwErrors.old && <div style={{ color:C.red, fontFamily:'Barlow, sans-serif', fontSize:12, marginTop:4 }}>{pwErrors.old}</div>}
+              </div>
+              <div>
+                {lbl('Password Baru')}
+                <input type="password" value={newPw} onChange={e=>{setNewPw(e.target.value);clrPw('new')}} placeholder="Minimal 6 karakter" style={inputBase} />
+                {pwErrors.new && <div style={{ color:C.red, fontFamily:'Barlow, sans-serif', fontSize:12, marginTop:4 }}>{pwErrors.new}</div>}
+              </div>
+              <div>
+                {lbl('Konfirmasi Baru')}
+                <input type="password" value={confPw} onChange={e=>{setConfPw(e.target.value);clrPw('conf')}} placeholder="Ulangi password baru" style={inputBase} />
+                {pwErrors.conf && <div style={{ color:C.red, fontFamily:'Barlow, sans-serif', fontSize:12, marginTop:4 }}>{pwErrors.conf}</div>}
+              </div>
+              <button onClick={handlePwSubmit} style={btnRed}>SIMPAN PASSWORD</button>
+              {pwSuccess && <div style={{ fontFamily:'Barlow, sans-serif', fontSize:14, color:C.green, fontWeight:600 }}>✓ Password berhasil diubah</div>}
+            </div>
+          </div>
+        )}
 
         {/* ── Tab: Tipe Motor ── */}
         {tab==='tipemotor' && <>
@@ -2078,101 +2119,137 @@ function FinancePage({ cashlog, addCashLog, updateCashLog, deleteCashLog, curren
   return <CashLogPage cashlog={cashlog} addCashLog={addCashLog} updateCashLog={updateCashLog} deleteCashLog={deleteCashLog} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />
 }
 
-/* ── Migrations ── */
-;(() => {
-  const raw = localStorage.getItem('smw_users')
-  if (!raw) return
-  let users = JSON.parse(raw), changed = false
-  users = users.map(u => {
-    if (u.username !== 'owner') return u
-    let p = [...u.permissions]
-    const ins = (perm) => { if (!p.includes(perm)) { p = [...p.filter(x=>x!=='pengaturan'), perm, 'pengaturan']; changed = true } }
-    ins('finance'); ins('riwayat_edit')
-    return { ...u, permissions: p }
-  })
-  if (changed) localStorage.setItem('smw_users', JSON.stringify(users))
-})()
-
 /* ── App Root ── */
 export default function App() {
-  const [users,        setUsers]        = useState(() => { const s = localStorage.getItem('smw_users');        return s ? JSON.parse(s) : INITIAL_USERS        })
-  const [members,      setMembers]      = useState(() => { const s = localStorage.getItem('smw_members');      return s ? JSON.parse(s) : INITIAL_MEMBERS      })
-  const [transactions, setTransactions] = useState(() => { const s = localStorage.getItem('smw_transactions'); return s ? JSON.parse(s) : INITIAL_TRANSACTIONS })
-  const [cashlog,      setCashlog]      = useState(() => { const s = localStorage.getItem('smw_cashlog');      return s ? JSON.parse(s) : []                   })
-  const [motorTypes,   setMotorTypes]   = useState(() => { const s = localStorage.getItem('smw_motor_types'); return s ? JSON.parse(s) : INITIAL_MOTOR_TYPES   })
-  const [workers,      setWorkers]      = useState(() => { const s = localStorage.getItem('smw_workers');     return s ? JSON.parse(s) : []                   })
-  const [auditLog,     setAuditLog]     = useState(() => { const s = localStorage.getItem('smw_audit_log');   return s ? JSON.parse(s) : []                   })
+  const [users,        setUsers]        = useState([])
+  const [members,      setMembers]      = useState([])
+  const [transactions, setTransactions] = useState([])
+  const [cashlog,      setCashlog]      = useState([])
+  const [motorTypes,   setMotorTypes]   = useState([])
+  const [workers,      setWorkers]      = useState([])
+  const [auditLog,     setAuditLog]     = useState([])
+  const [dataLoaded,   setDataLoaded]   = useState(false)
   const [currentUser,  setCurrentUser]  = useState(null)
   const [page,         setPage]         = useState('dashboard')
-  const [showPwModal,  setShowPwModal]  = useState(false)
   const { toasts, addToast }            = useToasts()
 
-  useEffect(() => { localStorage.setItem('smw_users',        JSON.stringify(users))        }, [users])
-  useEffect(() => { localStorage.setItem('smw_members',      JSON.stringify(members))      }, [members])
-  useEffect(() => { localStorage.setItem('smw_transactions', JSON.stringify(transactions)) }, [transactions])
-  useEffect(() => { localStorage.setItem('smw_cashlog',      JSON.stringify(cashlog))      }, [cashlog])
-  useEffect(() => { localStorage.setItem('smw_motor_types',  JSON.stringify(motorTypes))   }, [motorTypes])
-  useEffect(() => { localStorage.setItem('smw_workers',      JSON.stringify(workers))       }, [workers])
+  useEffect(() => {
+    const unsubs = []
+    const init = async () => {
+      try {
+        const [loadedUsers, loadedMotorTypes, loadedWorkers] = await Promise.all([
+          getAll('users'),
+          getAll('motorTypes'),
+          getAll('workers'),
+        ])
+
+        if (loadedUsers.length === 0) {
+          await Promise.all(INITIAL_USERS.map(u => setItem('users', u.id, u)))
+          setUsers(INITIAL_USERS)
+        } else {
+          setUsers(loadedUsers)
+        }
+
+        if (loadedMotorTypes.length === 0) {
+          await Promise.all(INITIAL_MOTOR_TYPES.map(m => setItem('motorTypes', m.id, m)))
+          setMotorTypes(INITIAL_MOTOR_TYPES)
+        } else {
+          setMotorTypes(loadedMotorTypes)
+        }
+
+        setWorkers(loadedWorkers)
+
+        unsubs.push(listenTo('members',      setMembers))
+        unsubs.push(listenTo('transactions', setTransactions))
+        unsubs.push(listenTo('cashlog',      setCashlog))
+
+        setDataLoaded(true)
+      } catch (err) {
+        console.error('Firestore init error', err)
+      }
+    }
+    init()
+    return () => unsubs.forEach(u => u())
+  }, [])
 
   const login = (username, password) => {
-    const u = users.find(u=>u.username===username && u.password===password)
+    const u = users.find(u => u.username === username && u.password === password)
     if (!u) return false
     setCurrentUser(u); setPage(u.permissions[0]); return true
   }
   const logout = () => { setCurrentUser(null); setPage('dashboard') }
 
-  const addMember      = (m)  => setMembers(p=>[...p,m])
-  const updateMember   = (m)  => setMembers(p=>p.map(x=>x.id===m.id?m:x))
-  const addTransaction = (t) => setTransactions(p => {
-    const queueNumber = p.filter(tx => tx.date === t.date).length + 1
-    return [...p, { ...t, queueNumber, status:'menunggu', createdAt:new Date().toISOString(), completedAt:null, rating:null, notes:t.notes||null }]
-  })
-  const completeTransaction  = (id, rating) => setTransactions(p => p.map(t => t.id===id ? { ...t, status:'selesai', completedAt:new Date().toISOString(), rating:rating||null } : t))
-  const updateTransaction    = (t)  => setTransactions(p=>p.map(x=>x.id===t.id?t:x))
-  const deleteTransaction    = (id) => setTransactions(p=>p.filter(t=>t.id!==id))
-  const addUser        = (u)  => setUsers(p=>[...p,u])
+  /* members — realtime listener keeps state in sync */
+  const addMember    = (m) => setItem('members', m.id, m)
+  const updateMember = (m) => setItem('members', m.id, m)
 
+  /* transactions — realtime listener keeps state in sync */
+  const addTransaction = (t) => {
+    const queueNumber = transactions.filter(tx => tx.date === t.date).length + 1
+    const newT = { ...t, queueNumber, status:'menunggu', createdAt:new Date().toISOString(), completedAt:null, rating:null, notes:t.notes||null }
+    setItem('transactions', newT.id, newT)
+  }
+  const completeTransaction = (id, rating) => {
+    const t = transactions.find(x => x.id === id)
+    if (!t) return
+    setItem('transactions', id, { ...t, status:'selesai', completedAt:new Date().toISOString(), rating:rating||null })
+  }
+  const updateTransaction = (t)  => setItem('transactions', t.id, t)
+  const deleteTransaction = (id) => deleteItem('transactions', id)
+
+  /* cashlog — realtime listener keeps state in sync */
+  const addCashLog    = (e)  => { const id = nextCashId(cashlog); setItem('cashlog', id, { ...e, id }) }
+  const updateCashLog = (e)  => setItem('cashlog', e.id, e)
+  const deleteCashLog = (id) => deleteItem('cashlog', id)
+
+  /* users — load-once; manual setState + Firestore write */
+  const addUser    = (u)  => { setItem('users', u.id, u);  setUsers(p => [...p, u]) }
+  const updateUser = (u)  => { setItem('users', u.id, u);  setUsers(p => p.map(x => x.id===u.id ? u : x)) }
+  const deleteUser = (id) => { deleteItem('users', id);    setUsers(p => p.filter(u => u.id !== id)) }
+
+  /* motorTypes — load-once; manual setState + Firestore write */
+  const addMotorType    = (m)  => { const id=nextMotorId(motorTypes); const nm={...m,id}; setItem('motorTypes',id,nm); setMotorTypes(p=>[...p,nm]) }
+  const updateMotorType = (m)  => { setItem('motorTypes',m.id,m); setMotorTypes(p=>p.map(x=>x.id===m.id?m:x)) }
+  const deleteMotorType = (id) => { deleteItem('motorTypes',id);   setMotorTypes(p=>p.filter(m=>m.id!==id)) }
+  const toggleMotorType = (id) => { const m=motorTypes.find(x=>x.id===id); if(!m)return; const nm={...m,active:!m.active}; setItem('motorTypes',id,nm); setMotorTypes(p=>p.map(x=>x.id===id?nm:x)) }
+
+  /* workers — load-once; manual setState + Firestore write */
+  const addWorker    = (w)  => { const id=nextWorkerId(workers); const nw={...w,id}; setItem('workers',id,nw); setWorkers(p=>[...p,nw]) }
+  const updateWorker = (w)  => { setItem('workers',w.id,w); setWorkers(p=>p.map(x=>x.id===w.id?w:x)) }
+  const deleteWorker = (id) => { deleteItem('workers',id);   setWorkers(p=>p.filter(w=>w.id!==id)) }
+  const toggleWorker = (id) => { const w=workers.find(x=>x.id===id); if(!w)return; const nw={...w,active:!w.active}; setItem('workers',id,nw); setWorkers(p=>p.map(x=>x.id===id?nw:x)) }
+
+  /* auditLog — in-memory only (not persisted to Firestore) */
   const writeAuditLog = (module, action, target, changes) => {
     if (!currentUser) return
     setAuditLog(prev => {
       const entry = { id:nextLogId(prev), timestamp:new Date().toISOString(), userId:currentUser.id, userName:currentUser.name, module, action, target, changes }
-      const updated = [entry, ...prev].slice(0, 500)
-      localStorage.setItem('smw_audit_log', JSON.stringify(updated))
-      return updated
+      return [entry, ...prev].slice(0, 500)
     })
   }
-  const updateUser     = (u)  => setUsers(p=>p.map(x=>x.id===u.id?u:x))
-  const deleteUser     = (id) => setUsers(p=>p.filter(u=>u.id!==id))
-  const addCashLog     = (e)  => setCashlog(p => { const id=nextCashId(p); return [...p,{...e,id}] })
-  const updateCashLog  = (e)  => setCashlog(p=>p.map(x=>x.id===e.id?e:x))
-  const deleteCashLog  = (id) => setCashlog(p=>p.filter(e=>e.id!==id))
-  const addMotorType    = (m)  => setMotorTypes(p => { const id=nextMotorId(p); return [...p, {...m, id}] })
-  const updateMotorType = (m)  => setMotorTypes(p=>p.map(x=>x.id===m.id?m:x))
-  const deleteMotorType = (id) => setMotorTypes(p=>p.filter(m=>m.id!==id))
-  const toggleMotorType = (id) => setMotorTypes(p=>p.map(m=>m.id===id?{...m,active:!m.active}:m))
-  const addWorker    = (w)  => setWorkers(p => { const id=nextWorkerId(p); return [...p, {...w, id}] })
-  const updateWorker = (w)  => setWorkers(p=>p.map(x=>x.id===w.id?w:x))
-  const deleteWorker = (id) => setWorkers(p=>p.filter(w=>w.id!==id))
-  const toggleWorker = (id) => setWorkers(p=>p.map(w=>w.id===id?{...w,active:!w.active}:w))
 
   useEffect(() => {
     if (currentUser && !currentUser.permissions.includes(page)) setPage(currentUser.permissions[0])
   }, [currentUser, page])
 
+  if (!dataLoaded) return (
+    <div style={{ minHeight:'100vh', background:C.bg, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Barlow Condensed, sans-serif', fontSize:24, fontWeight:700, color:C.muted, letterSpacing:2 }}>
+      LOADING...
+    </div>
+  )
   if (!currentUser) return <><LoginPage onLogin={login} /><Toast toasts={toasts} /></>
 
   const can = (p) => currentUser.permissions.includes(p)
   return (
     <div style={{ minHeight:'100vh', background:C.bg }}>
       <Toast toasts={toasts} />
-      {showPwModal && <GantiPasswordModal onClose={()=>setShowPwModal(false)} currentUser={currentUser} updateUser={updateUser} writeAuditLog={writeAuditLog} />}
-      <Nav user={currentUser} page={page} setPage={setPage} logout={logout} onChangePassword={()=>setShowPwModal(true)} />
+      <Nav user={currentUser} page={page} setPage={setPage} logout={logout} />
       {page==='kasir'      && can('kasir')      && <KasirPage     members={members} transactions={transactions} addTransaction={addTransaction} updateMember={updateMember} addMember={addMember} addCashLog={addCashLog} motorTypes={motorTypes} workers={workers} completeTransaction={completeTransaction} user={currentUser} addToast={addToast} />}
       {page==='dashboard'  && can('dashboard')  && <DashboardPage members={members} transactions={transactions} workers={workers} />}
       {page==='member'     && can('member')     && <MemberPage    members={members} transactions={transactions} />}
       {page==='riwayat'    && can('riwayat')    && <RiwayatPage   transactions={transactions} completeTransaction={completeTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} motorTypes={motorTypes} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
       {page==='finance'    && can('finance')    && <FinancePage   cashlog={cashlog} addCashLog={addCashLog} updateCashLog={updateCashLog} deleteCashLog={deleteCashLog} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
-      {page==='pengaturan' && can('pengaturan') && <SettingsPage  users={users} addUser={addUser} updateUser={updateUser} deleteUser={deleteUser} motorTypes={motorTypes} addMotorType={addMotorType} updateMotorType={updateMotorType} deleteMotorType={deleteMotorType} toggleMotorType={toggleMotorType} workers={workers} addWorker={addWorker} updateWorker={updateWorker} deleteWorker={deleteWorker} toggleWorker={toggleWorker} auditLog={auditLog} currentUser={currentUser} addToast={addToast} />}
+      {page==='pengaturan' && can('pengaturan') && <SettingsPage  users={users} addUser={addUser} updateUser={updateUser} deleteUser={deleteUser} motorTypes={motorTypes} addMotorType={addMotorType} updateMotorType={updateMotorType} deleteMotorType={deleteMotorType} toggleMotorType={toggleMotorType} workers={workers} addWorker={addWorker} updateWorker={updateWorker} deleteWorker={deleteWorker} toggleWorker={toggleWorker} auditLog={auditLog} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
     </div>
   )
 }
