@@ -2847,6 +2847,10 @@ export default function App() {
       const member           = members.find(m => m.id === tx.memberId)
       if (member) updateMember({ ...member, washCount, totalSpent, vouchers })
     }
+    // Remove the auto-generated kasir cash entry linked to this transaction
+    cashlog
+      .filter(e => e.refTrxId === id)
+      .forEach(e => deleteItem('cashlog', e.id))
   }
 
   /* cashlog — realtime listener keeps state in sync */
