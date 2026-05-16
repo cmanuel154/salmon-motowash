@@ -123,6 +123,50 @@ function LoyaltyBar({ washCount, big }) {
 }
 
 
+/* ── PWA Install Banner ── */
+function useInstallPrompt() {
+  const [prompt, setPrompt] = useState(null)
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setPrompt(e) }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+  const install = async () => {
+    if (!prompt) return
+    prompt.prompt()
+    const { outcome } = await prompt.userChoice
+    if (outcome === 'accepted') setPrompt(null)
+  }
+  return { canInstall: !!prompt, install }
+}
+
+function InstallBanner() {
+  const { canInstall, install } = useInstallPrompt()
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem('smw_pwa_dismissed') === '1' } catch { return false }
+  })
+  if (!canInstall || dismissed) return null
+  return (
+    <div style={{ background:'#1a0a0a', borderBottom:`1px solid ${C.red}`, padding:'10px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ width:32, height:32, borderRadius:8, background:C.red, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><rect x="3" y="18" width="18" height="3" rx="1"/>
+          </svg>
+        </div>
+        <div>
+          <div style={{ fontFamily:'Barlow, sans-serif', fontWeight:700, fontSize:13, color:C.white }}>Install Salmon Moto Wash</div>
+          <div style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted }}>Akses lebih cepat langsung dari layar utama</div>
+        </div>
+      </div>
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <button onClick={install} style={{ background:C.red, border:'none', color:'#fff', cursor:'pointer', padding:'7px 18px', borderRadius:6, fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:14, letterSpacing:0.5 }}>Install App</button>
+        <button onClick={()=>{ setDismissed(true); localStorage.setItem('smw_pwa_dismissed','1') }} style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', padding:'7px 10px', fontSize:18, lineHeight:1 }}>×</button>
+      </div>
+    </div>
+  )
+}
+
 /* ── Nav ── */
 function Nav({ user, page, setPage, logout }) {
   const isMobile = useIsMobile()
@@ -2842,6 +2886,7 @@ export default function App() {
   return (
     <div style={{ minHeight:'100vh', background:C.bg }}>
       <Toast toasts={toasts} />
+      <InstallBanner />
       <Nav user={currentUser} page={page} setPage={setPage} logout={logout} />
       {page==='kasir'      && can('kasir')      && <KasirPage     members={members} transactions={transactions} addTransaction={addTransaction} updateMember={updateMember} addMember={addMember} addCashLog={addCashLog} motorTypes={motorTypes} workers={workers} completeTransaction={completeTransaction} user={currentUser} addToast={addToast} />}
       {page==='dashboard'  && can('dashboard')  && <DashboardPage members={members} transactions={transactions} workers={workers} />}
