@@ -1290,8 +1290,8 @@ function RiwayatPage({ transactions, completeTransaction, updateTransaction, del
   }
   const handleDeleteTrx = (t) => {
     if (!window.confirm(`Hapus transaksi ${t.id}?`)) return
-    writeAuditLog?.('riwayat', 'delete', t.id, [{ field:'status', from:'exists', to:'deleted' }])
     deleteTransaction?.(t.id)
+    writeAuditLog?.('riwayat', 'delete', t.id, [{ field:'status', from:'exists', to:'deleted' }])
     addToast?.(`Transaksi ${t.id} dihapus`, 'warn')
   }
   const sorted = [...(filter==='all'?transactions:transactions.filter(t=>t.payment===filter))].sort((a,b)=>b.id.localeCompare(a.id))
@@ -2834,7 +2834,20 @@ export default function App() {
     setItem('transactions', id, { ...t, status:'selesai', completedAt:new Date().toISOString(), rating:rating||null })
   }
   const updateTransaction = (t)  => setItem('transactions', t.id, t)
-  const deleteTransaction = (id) => deleteItem('transactions', id)
+  const deleteTransaction = (id) => {
+    const tx = transactions.find(t => t.id === id)
+    deleteItem('transactions', id)
+    if (tx?.memberId) {
+      const remaining        = transactions.filter(t => t.id !== id && t.memberId === tx.memberId && !t.isVoucherRedemption)
+      const washCount        = remaining.length
+      const totalSpent       = remaining.reduce((s, t) => s + (t.totalAmount || 0), 0)
+      const earnedVouchers   = Math.floor(washCount / 5)
+      const redeemedVouchers = transactions.filter(t => t.id !== id && t.memberId === tx.memberId && t.isVoucherRedemption).length
+      const vouchers         = Math.max(0, earnedVouchers - redeemedVouchers)
+      const member           = members.find(m => m.id === tx.memberId)
+      if (member) updateMember({ ...member, washCount, totalSpent, vouchers })
+    }
+  }
 
   /* cashlog — realtime listener keeps state in sync */
   const addCashLog    = (e)  => { const id = nextCashId(cashlog); setItem('cashlog', id, { ...e, id }) }
