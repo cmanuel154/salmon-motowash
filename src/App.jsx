@@ -427,9 +427,6 @@ function KasirPage({ members, transactions, addTransaction, updateMember, addMem
     }
     const updatedMember = { ...foundMember, washCount:newWashCount, vouchers:newVouchers, totalSpent:foundMember.totalSpent+totalAmount }
     addTransaction(trx); updateMember(updatedMember)
-    if (payment !== 'voucher') {
-      addCashLog({ type:'in', amount:trx.totalAmount, description:`Cuci ${trx.motorType.name} - ${trx.plate}`, category:'sales_revenue', date:trx.date, time:trx.time, source:'kasir', refTrxId:trx.id, createdBy:trx.kasir, editable:false })
-    }
     setLastTrx(trx); setLastMember(updatedMember)
     printReceipt(trx, updatedMember)
     setStep('receipt')
@@ -2832,6 +2829,15 @@ export default function App() {
     const t = transactions.find(x => x.id === id)
     if (!t) return
     setItem('transactions', id, { ...t, status:'selesai', completedAt:new Date().toISOString(), rating:rating||null })
+    if (!t.isVoucherRedemption && (t.totalAmount ?? 0) > 0) {
+      addCashLog({
+        type:'in', amount:t.totalAmount,
+        description:`Cuci ${t.motorType?.name || 'Motor'} - ${t.plate}`,
+        category:'sales_revenue', date:todayStr(), time:timeStr(),
+        source:'kasir', refTrxId:t.id,
+        createdBy:currentUser?.name || t.kasir, editable:false,
+      })
+    }
   }
   const updateTransaction = (t)  => setItem('transactions', t.id, t)
   const deleteTransaction = async (id) => {
@@ -2851,9 +2857,11 @@ export default function App() {
       await updateItem('members', tx.memberId, { washCount, totalSpent, vouchers })
     }
 
-    // 3. Delete linked cashlog entry (direct Firestore query by refTrxId)
-    const linked = await queryWhere('cashlog', 'refTrxId', id)
-    await Promise.all(linked.map(e => deleteItem('cashlog', e.id)))
+    // 3. Delete linked cashlog entry — only exists if transaction was completed
+    if (tx?.status === 'selesai') {
+      const linked = await queryWhere('cashlog', 'refTrxId', id)
+      await Promise.all(linked.map(e => deleteItem('cashlog', e.id)))
+    }
   }
 
   /* cashlog — realtime listener keeps state in sync */
