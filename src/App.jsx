@@ -1870,7 +1870,8 @@ const CatIcon = ({ c, size=28 }) => (
 )
 function CashLogModal({ mode, type: initType, entry, onSave, onClose, addToast }) {
   const isMobile = useIsMobile()
-  const type       = mode === 'add' ? initType : entry.type
+  const [type,     setType]    = useState(mode === 'add' ? (initType || null) : entry.type)
+  const [typeErr,  setTypeErr] = useState(false)
   const [date,     setDate]    = useState(entry?.date        || todayStr())
   const [time,     setTime]    = useState(entry?.time        || timeStr())
   const [amt,      setAmt]     = useState(entry ? String(entry.amount) : '')
@@ -1885,11 +1886,14 @@ function CashLogModal({ mode, type: initType, entry, onSave, onClose, addToast }
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const accent = type === 'in' ? C.green : C.red
-  const title  = (mode === 'add' ? 'Tambah ' : 'Edit ') + (type === 'in' ? 'Cash In' : 'Cash Out')
+  const accent = type === 'in' ? C.green : type === 'out' ? C.red : C.blue
+  const title  = (mode === 'add' ? 'Tambah ' : 'Edit ') + 'Cash Log'
   const selCat = catById(cat)
 
+  const pickType = (t) => { setType(t); setTypeErr(false) }
+
   const submit = () => {
+    if (!type)                        { setTypeErr(true); return }
     const n = Number(amt)
     if (!amt || isNaN(n) || n <= 0) { addToast('Masukkan jumlah yang valid', 'error'); return }
     if (!desc.trim())                { addToast('Masukkan keterangan', 'error');        return }
@@ -1901,13 +1905,26 @@ function CashLogModal({ mode, type: initType, entry, onSave, onClose, addToast }
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:1000, display:'flex', alignItems:isMobile?'flex-end':'center', justifyContent:'center', padding:isMobile?0:24 }}>
       <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:isMobile?'16px 16px 0 0':16, padding:isMobile?'24px 20px 32px':32, width:isMobile?'100%':440, maxHeight:isMobile?'92vh':'auto', overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:22 }}>
-          <div>
-            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:22, color:C.white }}>{title}</div>
-            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontSize:13, fontWeight:700, color:accent, marginTop:2, letterSpacing:0.5 }}>{type==='in'?'Cash In':'Cash Out'}</div>
-          </div>
+          <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:22, color:C.white }}>{title}</div>
           <button onClick={onClose} style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:22, padding:0, lineHeight:1 }}>×</button>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+
+          {/* Type toggle — only shown when adding (edit keeps existing type) */}
+          {mode === 'add' && (
+            <div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:0, borderRadius:8, overflow:'hidden', border:`1px solid ${typeErr?C.red:C.border}` }}>
+                <button onClick={()=>pickType('in')} style={{ background:type==='in'?C.green:'transparent', border:'none', borderRight:`1px solid ${C.border}`, color:type==='in'?'#fff':C.muted, cursor:'pointer', padding:'14px 0', fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:17, letterSpacing:0.5, transition:'all 0.15s' }}>
+                  + Cash In
+                </button>
+                <button onClick={()=>pickType('out')} style={{ background:type==='out'?C.red:'transparent', border:'none', color:type==='out'?'#fff':C.muted, cursor:'pointer', padding:'14px 0', fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:17, letterSpacing:0.5, transition:'all 0.15s' }}>
+                  − Cash Out
+                </button>
+              </div>
+              {typeErr && <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.red, marginTop:6 }}>Pilih tipe: Cash In atau Cash Out</div>}
+            </div>
+          )}
+
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
             <div>{lbl('Tanggal')}<input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{ ...inputBase, colorScheme:'dark' }} /></div>
             <div>{lbl('Jam')}<input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{ ...inputBase, colorScheme:'dark' }} /></div>
@@ -2023,10 +2040,7 @@ function CashLogPage({ cashlog, addCashLog, updateCashLog, deleteCashLog, curren
             <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:isMobile?22:28, color:C.white, letterSpacing:1 }}>CASH LOG</div>
             <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, marginTop:2 }}>RINGKASAN — {todayDisplay}</div>
           </div>
-          <div style={{ display:'flex', gap:8 }}>
-            <button onClick={()=>setModal({mode:'add',type:'in'})}  style={{ background:C.green, border:'none', color:'#fff', cursor:'pointer', padding:'10px 20px', borderRadius:8, fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:15, letterSpacing:0.5 }}>+ Cash In</button>
-            <button onClick={()=>setModal({mode:'add',type:'out'})} style={{ background:C.red,   border:'none', color:'#fff', cursor:'pointer', padding:'10px 20px', borderRadius:8, fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:15, letterSpacing:0.5 }}>+ Cash Out</button>
-          </div>
+          <button onClick={()=>setModal({mode:'add'})} style={{ background:C.blue, border:'none', color:'#fff', cursor:'pointer', padding:'10px 20px', borderRadius:8, fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:15, letterSpacing:0.5 }}>+ CashLog</button>
         </div>
 
         {/* Summary cards */}
