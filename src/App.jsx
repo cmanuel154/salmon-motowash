@@ -1978,7 +1978,7 @@ function CashLogModal({ mode, type: initType, entry, onSave, onClose, addToast }
 
 function CashLogPage({ cashlog, addCashLog, updateCashLog, deleteCashLog, currentUser, writeAuditLog, addToast }) {
   const isMobile = useIsMobile()
-  const [dateFilter, setDateFilter] = useState('today')
+  const [dateFilter, setDateFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [search,     setSearch]     = useState('')
   const [modal,      setModal]      = useState(null)
@@ -2146,7 +2146,7 @@ export default function App() {
   const [workers,      setWorkers]      = useState([])
   const [auditLog,     setAuditLog]     = useState([])
   const [dataLoaded,   setDataLoaded]   = useState(false)
-  const [currentUser,  setCurrentUser]  = useState(null)
+  const [currentUser,  setCurrentUser]  = useState(() => { try { const s = localStorage.getItem('smw_session'); return s ? JSON.parse(s) : null } catch { return null } })
   const [page,         setPage]         = useState('dashboard')
   const { toasts, addToast }            = useToasts()
 
@@ -2192,9 +2192,10 @@ export default function App() {
   const login = (username, password) => {
     const u = users.find(u => u.username === username && u.password === password)
     if (!u) return false
+    localStorage.setItem('smw_session', JSON.stringify(u))
     setCurrentUser(u); setPage(u.permissions[0]); return true
   }
-  const logout = () => { setCurrentUser(null); setPage('dashboard') }
+  const logout = () => { localStorage.removeItem('smw_session'); setCurrentUser(null); setPage('dashboard') }
 
   /* members — realtime listener keeps state in sync */
   const addMember    = (m) => setItem('members', m.id, m)
