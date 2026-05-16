@@ -1,7 +1,7 @@
 import { db } from './firebase'
 import {
   collection, getDocs, setDoc, updateDoc,
-  deleteDoc, doc, onSnapshot
+  deleteDoc, doc, onSnapshot, query, where
 } from 'firebase/firestore'
 
 // GET semua data dari collection
@@ -23,6 +23,12 @@ export const updateItem = async (col, id, data) => {
 // DELETE
 export const deleteItem = async (col, id) => {
   await deleteDoc(doc(db, col, id))
+}
+
+// QUERY with a single where-equals filter
+export const queryWhere = async (col, field, value) => {
+  const snap = await getDocs(query(collection(db, col), where(field, '==', value)))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
 // REALTIME listener — auto update UI saat data berubah

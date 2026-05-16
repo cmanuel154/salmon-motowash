@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
-import { getAll, setItem, updateItem, deleteItem, listenTo } from './db'
+import { getAll, setItem, updateItem, deleteItem, listenTo, queryWhere } from './db'
 import { LayoutDashboard, ShoppingCart, Users, History, Wallet, Settings } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import logo from './assets/logo.png'
@@ -1288,9 +1288,9 @@ function RiwayatPage({ transactions, completeTransaction, updateTransaction, del
     }
     setEditTarget(null)
   }
-  const handleDeleteTrx = (t) => {
+  const handleDeleteTrx = async (t) => {
     if (!window.confirm(`Hapus transaksi ${t.id}?`)) return
-    deleteTransaction?.(t.id)
+    await deleteTransaction?.(t.id)
     writeAuditLog?.('riwayat', 'delete', t.id, [{ field:'status', from:'exists', to:'deleted' }])
     addToast?.(`Transaksi ${t.id} dihapus`, 'warn')
   }
@@ -2834,9 +2834,13 @@ export default function App() {
     setItem('transactions', id, { ...t, status:'selesai', completedAt:new Date().toISOString(), rating:rating||null })
   }
   const updateTransaction = (t)  => setItem('transactions', t.id, t)
-  const deleteTransaction = (id) => {
+  const deleteTransaction = async (id) => {
     const tx = transactions.find(t => t.id === id)
-    deleteItem('transactions', id)
+
+    // 1. Delete the transaction document
+    await deleteItem('transactions', id)
+
+    // 2. Recalculate member stats (partial updateDoc — only the 3 stat fields)
     if (tx?.memberId) {
       const remaining        = transactions.filter(t => t.id !== id && t.memberId === tx.memberId && !t.isVoucherRedemption)
       const washCount        = remaining.length
@@ -2844,13 +2848,12 @@ export default function App() {
       const earnedVouchers   = Math.floor(washCount / 5)
       const redeemedVouchers = transactions.filter(t => t.id !== id && t.memberId === tx.memberId && t.isVoucherRedemption).length
       const vouchers         = Math.max(0, earnedVouchers - redeemedVouchers)
-      const member           = members.find(m => m.id === tx.memberId)
-      if (member) updateMember({ ...member, washCount, totalSpent, vouchers })
+      await updateItem('members', tx.memberId, { washCount, totalSpent, vouchers })
     }
-    // Remove the auto-generated kasir cash entry linked to this transaction
-    cashlog
-      .filter(e => e.refTrxId === id)
-      .forEach(e => deleteItem('cashlog', e.id))
+
+    // 3. Delete linked cashlog entry (direct Firestore query by refTrxId)
+    const linked = await queryWhere('cashlog', 'refTrxId', id)
+    await Promise.all(linked.map(e => deleteItem('cashlog', e.id)))
   }
 
   /* cashlog — realtime listener keeps state in sync */
