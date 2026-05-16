@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { getAll, setItem, updateItem, deleteItem, listenTo } from './db'
+import { LayoutDashboard, ShoppingCart, Users, History, Wallet, Settings } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import logo from './assets/logo.png'
 import logoBlack from './assets/logo - black.png'
 
@@ -18,12 +20,12 @@ const INITIAL_MOTOR_TYPES = [
   { id:'MT004', name:'Besar (>250cc)', price:30000, active:true },
 ]
 const ALL_TABS = [
-  { key:'dashboard',  label:'Dashboard'  },
-  { key:'kasir',      label:'Kasir'      },
-  { key:'member',     label:'Member'     },
-  { key:'riwayat',    label:'Riwayat'    },
-  { key:'finance',    label:'Finance'    },
-  { key:'pengaturan', label:'Pengaturan' },
+  { key:'dashboard',  label:'Dashboard',  Icon:LayoutDashboard },
+  { key:'kasir',      label:'Kasir',      Icon:ShoppingCart    },
+  { key:'member',     label:'Member',     Icon:Users           },
+  { key:'riwayat',    label:'Riwayat',    Icon:History         },
+  { key:'finance',    label:'Finance',    Icon:Wallet          },
+  { key:'pengaturan', label:'Pengaturan', Icon:Settings        },
 ]
 const PERM_META = [
   { key:'dashboard',   label:'Dashboard',   bg:'#0a1828', color:C.blue    },
@@ -142,7 +144,9 @@ function Nav({ user, page, setPage, logout }) {
         <div onClick={()=>setDrawerOpen(false)} style={{ position:'fixed', inset:0, zIndex:300 }}>
           <div onClick={e=>e.stopPropagation()} style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, width:'100%', boxShadow:'0 8px 32px rgba(0,0,0,0.6)' }}>
             {tabs.map(t => (
-              <button key={t.key} onClick={()=>navTo(t.key)} style={{ display:'block', width:'100%', background:page===t.key?C.card:'none', border:'none', borderBottom:`1px solid ${C.border}`, padding:'0 20px', height:48, textAlign:'left', fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:15, color:page===t.key?C.white:C.muted, cursor:'pointer' }}>{t.label}</button>
+              <button key={t.key} onClick={()=>navTo(t.key)} style={{ display:'flex', alignItems:'center', gap:8, width:'100%', background:page===t.key?C.card:'none', border:'none', borderBottom:`1px solid ${C.border}`, padding:'0 20px', height:48, textAlign:'left', fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:15, color:page===t.key?C.white:C.muted, cursor:'pointer' }}>
+                <t.Icon size={15} />{t.label}
+              </button>
             ))}
             <div style={{ padding:'12px 20px', borderBottom:`1px solid ${C.border}` }}>
               <div style={{ fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:13, color:C.white }}>{user.name}</div>
@@ -162,7 +166,9 @@ function Nav({ user, page, setPage, logout }) {
       </div>
       <div style={{ display:'flex', gap:2, flex:1 }}>
         {tabs.map(t => (
-          <button key={t.key} onClick={() => setPage(t.key)} style={{ background:page===t.key?C.card:'none', border:'none', cursor:'pointer', padding:'7px 16px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:14, color:page===t.key?C.white:C.muted, transition:'all 0.15s' }}>{t.label}</button>
+          <button key={t.key} onClick={() => setPage(t.key)} style={{ display:'flex', alignItems:'center', gap:6, background:page===t.key?C.card:'none', border:'none', cursor:'pointer', padding:'7px 16px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:14, color:page===t.key?C.white:C.muted, transition:'all 0.15s' }}>
+            <t.Icon size={15} />{t.label}
+          </button>
         ))}
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:14, flexShrink:0 }}>
@@ -2132,8 +2138,576 @@ function CashLogPage({ cashlog, addCashLog, updateCashLog, deleteCashLog, curren
   )
 }
 
-function FinancePage({ cashlog, addCashLog, updateCashLog, deleteCashLog, currentUser, writeAuditLog, addToast }) {
-  return <CashLogPage cashlog={cashlog} addCashLog={addCashLog} updateCashLog={updateCashLog} deleteCashLog={deleteCashLog} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />
+/* ── Finance: Laporan Tab ── */
+function LaporanTab({ cashlog, transactions }) {
+  const isMobile = useIsMobile()
+  const [period,     setPeriod]     = useState('month')
+  const [customFrom, setCustomFrom] = useState(todayStr())
+  const [customTo,   setCustomTo]   = useState(todayStr())
+
+  const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+  const now         = new Date()
+  const monthStr    = now.toISOString().slice(0,7)
+  const lastMoDate  = new Date(now.getFullYear(), now.getMonth()-1, 1)
+  const lastMoStr   = lastMoDate.toISOString().slice(0,7)
+  const weekCutoff  = (() => { const d=new Date(); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10) })()
+
+  const inPeriod = (date) => {
+    if (period==='week')       return date >= weekCutoff
+    if (period==='month')      return date.startsWith(monthStr)
+    if (period==='lastmonth')  return date.startsWith(lastMoStr)
+    if (period==='custom')     return date >= customFrom && date <= customTo
+    return true
+  }
+
+  const filtered       = cashlog.filter(e => inPeriod(e.date))
+  const totalOmzet     = filtered.filter(e=>e.type==='in').reduce((s,e)=>s+e.amount,0)
+  const totalPengeluar = filtered.filter(e=>e.type==='out').reduce((s,e)=>s+e.amount,0)
+  const netProfit      = totalOmzet - totalPengeluar
+
+  const weekLabel = (date) => {
+    const d = new Date(date+'T00:00:00')
+    if (period==='week') { const days=['Min','Sen','Sel','Rab','Kam','Jum','Sab']; return days[d.getDay()] }
+    return 'Minggu '+Math.ceil(d.getDate()/7)
+  }
+  const barMap = {}
+  filtered.forEach(e => {
+    const k = weekLabel(e.date)
+    if (!barMap[k]) barMap[k] = { name:k, omzet:0, pengeluaran:0 }
+    if (e.type==='in')  barMap[k].omzet       += e.amount
+    else                barMap[k].pengeluaran  += e.amount
+  })
+  const barData = Object.values(barMap)
+
+  const pieMap = {}
+  filtered.filter(e=>e.type==='out').forEach(e => {
+    const cat   = catById(e.category)
+    const label = cat ? cat.label : 'Lainnya'
+    const color = cat ? cat.color : C.muted
+    if (!pieMap[label]) pieMap[label] = { name:label, value:0, color }
+    pieMap[label].value += e.amount
+  })
+  const pieData = Object.values(pieMap)
+
+  const tableRows = [...filtered].sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time))
+
+  const periodLabel = period==='week'      ? '7 Hari Terakhir'
+                    : period==='month'     ? `${MONTHS_ID[now.getMonth()]} ${now.getFullYear()}`
+                    : period==='lastmonth' ? `${MONTHS_ID[lastMoDate.getMonth()]} ${lastMoDate.getFullYear()}`
+                    : `${customFrom} s/d ${customTo}`
+
+  const abbrev = (n) => n>=1000000?`${(n/1000000).toFixed(1)}jt`:n>=1000?`${Math.round(n/1000)}k`:'0'
+  const thS = { padding:'12px 16px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:0.5 }
+
+  return (
+    <div style={{ padding:isMobile?'16px':'40px 24px', background:C.bg, minHeight:'100vh' }}>
+      <div style={{ maxWidth:1100, margin:'0 auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexDirection:isMobile?'column':'row', gap:12, marginBottom:20 }}>
+          <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:isMobile?22:28, color:C.white, letterSpacing:1 }}>LAPORAN KEUANGAN</div>
+          <div style={{ display:'flex', gap:4, background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:4, flexWrap:'wrap' }}>
+            {[['week','Minggu Ini'],['month','Bulan Ini'],['lastmonth','Bulan Lalu'],['custom','Custom']].map(([v,l])=>(
+              <button key={v} onClick={()=>setPeriod(v)} style={{ background:period===v?C.card:'none', border:'none', color:period===v?C.white:C.muted, cursor:'pointer', padding:'6px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:13, transition:'all 0.15s' }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        {period==='custom' && (
+          <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:16, flexWrap:'wrap' }}>
+            <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{ ...inputBase, width:'auto', colorScheme:'dark' }} />
+            <span style={{ color:C.muted, fontSize:13 }}>s/d</span>
+            <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{ ...inputBase, width:'auto', colorScheme:'dark' }} />
+          </div>
+        )}
+        <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, marginBottom:20 }}>{periodLabel}</div>
+
+        {/* Summary cards */}
+        <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'repeat(3,1fr)', gap:isMobile?10:16, marginBottom:28 }}>
+          {[['Total Omzet',totalOmzet,C.green],['Total Pengeluaran',totalPengeluar,C.red],['Net Profit',netProfit,netProfit>=0?C.white:C.red]].map(([label,val,color])=>(
+            <div key={label} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:'20px 24px' }}>
+              <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, marginBottom:6, textTransform:'uppercase', letterSpacing:0.5 }}>{label}</div>
+              <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:900, fontSize:28, color }}>{formatRp(val)}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Charts */}
+        {barData.length>0 && (
+          <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'1fr 1fr', gap:16, marginBottom:28 }}>
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24 }}>
+              <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:16, color:C.white, marginBottom:16 }}>OMZET VS PENGELUARAN</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={barData} barGap={4}>
+                  <XAxis dataKey="name" tick={{ fill:C.muted, fontSize:11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill:C.muted, fontSize:10 }} axisLine={false} tickLine={false} tickFormatter={abbrev} width={40} />
+                  <Tooltip contentStyle={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, fontFamily:'Barlow, sans-serif', fontSize:12 }} formatter={(v,n)=>[formatRp(v), n==='omzet'?'Omzet':'Pengeluaran']} />
+                  <Bar dataKey="omzet" fill={C.blue} radius={[4,4,0,0]} maxBarSize={40} />
+                  <Bar dataKey="pengeluaran" fill={C.red} radius={[4,4,0,0]} maxBarSize={40} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{ display:'flex', gap:16, marginTop:8, justifyContent:'center' }}>
+                {[['Omzet',C.blue],['Pengeluaran',C.red]].map(([l,c])=>(
+                  <div key={l} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:10, height:10, borderRadius:2, background:c }} />
+                    <span style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted }}>{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {pieData.length>0 && (
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24 }}>
+                <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:16, color:C.white, marginBottom:16 }}>BREAKDOWN PENGELUARAN</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={2}>
+                      {pieData.map((e,i)=><Cell key={i} fill={e.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:8, fontFamily:'Barlow, sans-serif', fontSize:12 }} formatter={v=>formatRp(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, justifyContent:'center' }}>
+                  {pieData.map((d,i)=>(
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      <div style={{ width:8, height:8, borderRadius:'50%', background:d.color, flexShrink:0 }} />
+                      <span style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted }}>{d.name} ({totalPengeluar>0?Math.round(d.value/totalPengeluar*100):0}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Table */}
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', minWidth:480 }}>
+            <thead><tr style={{ background:C.card }}>{['Tanggal','Keterangan','Tipe','Jumlah'].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+            <tbody>
+              {tableRows.length===0
+                ? <tr><td colSpan={4} style={{ padding:32, textAlign:'center', fontFamily:'Barlow, sans-serif', fontSize:14, color:C.muted }}>Tidak ada data untuk periode ini</td></tr>
+                : tableRows.map(e=>(
+                    <tr key={e.id} style={{ borderBottom:`1px solid ${C.border}` }}>
+                      <td style={{ padding:'12px 16px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, whiteSpace:'nowrap' }}>{fmtDate(e.date)}</td>
+                      <td style={{ padding:'12px 16px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.white }}>{e.description}</td>
+                      <td style={{ padding:'12px 16px' }}>
+                        <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:20, background:e.type==='in'?'#0a1a0a':'#1a0a0a', color:e.type==='in'?C.green:C.red, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700 }}>{e.type==='in'?'Cash In':'Cash Out'}</span>
+                      </td>
+                      <td style={{ padding:'12px 16px', fontFamily:'Barlow Condensed, sans-serif', fontSize:16, fontWeight:700, color:e.type==='in'?C.green:C.red }}>{formatRp(e.amount)}</td>
+                    </tr>
+                  ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Finance: Target Tab ── */
+function TargetTab({ cashlog, targets, addTarget, updateTarget }) {
+  const isMobile = useIsMobile()
+  const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+  const now = new Date()
+
+  const [selectedMonth, setSelectedMonth] = useState(now.toISOString().slice(0,7))
+  const [targetInput,   setTargetInput]   = useState('')
+  const [editing,       setEditing]       = useState(false)
+
+  const target = targets.find(t => t.id === selectedMonth)
+
+  const monthCashIn = cashlog
+    .filter(e => e.type==='in' && e.date.startsWith(selectedMonth))
+    .reduce((s,e) => s+e.amount, 0)
+
+  const progress      = target ? Math.min((monthCashIn/target.targetAmount)*100, 100) : 0
+  const progressColor = progress>=100 ? C.green : progress>=70 ? C.blue : C.red
+
+  const [yr, mo] = selectedMonth.split('-').map(Number)
+  const daysInMonth  = new Date(yr, mo, 0).getDate()
+  const isThisMonth  = now.getFullYear()===yr && now.getMonth()+1===mo
+  const daysElapsed  = isThisMonth ? now.getDate() : daysInMonth
+  const avgDaily     = daysElapsed>0 ? monthCashIn/daysElapsed : 0
+  const estEndOfMonth= avgDaily*daysInMonth
+
+  const monthOptions = []
+  for (let i=0; i<13; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1)
+    monthOptions.push({ val:d.toISOString().slice(0,7), label:`${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}` })
+  }
+
+  const handleSave = () => {
+    const n = Number(String(targetInput).replace(/\D/g,''))
+    if (!n||n<=0) { return }
+    const data = { id:selectedMonth, month:selectedMonth, targetAmount:n, createdAt:new Date().toISOString() }
+    if (target) updateTarget(data)
+    else        addTarget(data)
+    setEditing(false); setTargetInput('')
+  }
+
+  return (
+    <div style={{ padding:isMobile?'16px':'40px 24px', background:C.bg, minHeight:'100vh' }}>
+      <div style={{ maxWidth:700, margin:'0 auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24, flexWrap:'wrap', gap:12 }}>
+          <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:isMobile?22:28, color:C.white, letterSpacing:1 }}>TARGET OMZET</div>
+          <select value={selectedMonth} onChange={e=>{setSelectedMonth(e.target.value);setEditing(false);setTargetInput('')}}
+            style={{ ...inputBase, width:'auto', padding:'7px 12px', fontSize:13, cursor:'pointer' }}>
+            {monthOptions.map(o=><option key={o.val} value={o.val}>{o.label}</option>)}
+          </select>
+        </div>
+
+        {!target||editing ? (
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:28 }}>
+            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white, marginBottom:6 }}>
+              {editing?'UBAH TARGET':'SET TARGET'} — {MONTHS_ID[mo-1]} {yr}
+            </div>
+            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, marginBottom:20 }}>Target dihitung dari total omzet transaksi (Cash In dari kasir)</div>
+            {lbl('Target Omzet (Rp)')}
+            <input type="number" value={targetInput||(editing&&target?target.targetAmount:'')} onChange={e=>setTargetInput(e.target.value)} placeholder="Contoh: 5000000" style={{ ...inputBase, marginBottom:16 }} />
+            <div style={{ display:'flex', gap:10 }}>
+              {editing && <button onClick={()=>setEditing(false)} style={btnGhost}>Batal</button>}
+              <button onClick={handleSave} style={btnRed}>Simpan Target</button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:28, marginBottom:12 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
+                <div>
+                  <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, textTransform:'uppercase', letterSpacing:0.5, marginBottom:4 }}>TARGET {MONTHS_ID[mo-1].toUpperCase()} {yr}</div>
+                  <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:900, fontSize:32, color:C.white }}>{formatRp(target.targetAmount)}</div>
+                </div>
+                <button onClick={()=>{setEditing(true);setTargetInput(String(target.targetAmount))}}
+                  style={{ background:'none', border:`1px solid ${C.border}`, color:C.muted, cursor:'pointer', padding:'6px 14px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:13 }}>Ubah Target</button>
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                <span style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.white }}>{formatRp(monthCashIn)}</span>
+                <span style={{ fontFamily:'Barlow Condensed, sans-serif', fontSize:22, fontWeight:700, color:progressColor }}>{Math.round(progress)}%</span>
+              </div>
+              <div style={{ background:C.card, borderRadius:8, height:16, overflow:'hidden', marginBottom:20 }}>
+                <div style={{ width:`${progress}%`, height:'100%', background:progressColor, borderRadius:8, transition:'width 0.5s ease' }} />
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div style={{ background:C.card, borderRadius:8, padding:'14px 16px' }}>
+                  <div style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:0.5, marginBottom:4 }}>Rata-rata Harian</div>
+                  <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:20, color:C.white }}>{formatRp(Math.round(avgDaily))}</div>
+                </div>
+                <div style={{ background:C.card, borderRadius:8, padding:'14px 16px' }}>
+                  <div style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:0.5, marginBottom:4 }}>Estimasi Akhir Bulan</div>
+                  <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:20, color:estEndOfMonth>=target.targetAmount?C.green:C.amber }}>{formatRp(Math.round(estEndOfMonth))}</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, textAlign:'center' }}>Target dihitung dari total omzet transaksi (Cash In dari kasir)</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Finance: Modal & Aset Tab ── */
+function ModalAsetTab({ cashlog }) {
+  const isMobile  = useIsMobile()
+  const MODAL_CATS = ['assets_purchase', 'renovation', 'space_equipment']
+
+  const modalEntries = cashlog.filter(e => e.type==='out' && MODAL_CATS.includes(e.category))
+  const totalModal   = modalEntries.reduce((s,e) => s+e.amount, 0)
+  const totalOmzet   = cashlog.filter(e=>e.type==='in').reduce((s,e)=>s+e.amount, 0)
+  const bepPct       = totalModal>0 ? Math.min((totalOmzet/totalModal)*100, 100) : 0
+  const remaining    = Math.max(totalModal-totalOmzet, 0)
+
+  const monthRevs = {}
+  cashlog.filter(e=>e.type==='in').forEach(e => {
+    const m = e.date.slice(0,7)
+    monthRevs[m] = (monthRevs[m]||0) + e.amount
+  })
+  const revArr         = Object.values(monthRevs)
+  const avgMonthlyRev  = revArr.length>0 ? revArr.reduce((s,v)=>s+v,0)/revArr.length : 0
+  const estMonthsLeft  = avgMonthlyRev>0 && remaining>0 ? Math.ceil(remaining/avgMonthlyRev) : null
+
+  const thS = { padding:'12px 16px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:0.5 }
+
+  return (
+    <div style={{ padding:isMobile?'16px':'40px 24px', background:C.bg, minHeight:'100vh' }}>
+      <div style={{ maxWidth:1100, margin:'0 auto' }}>
+        <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:isMobile?22:28, color:C.white, letterSpacing:1, marginBottom:24 }}>MODAL & ASET</div>
+
+        <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'repeat(2,1fr)', gap:isMobile?10:16, marginBottom:24 }}>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:'20px 24px' }}>
+            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, marginBottom:6, textTransform:'uppercase', letterSpacing:0.5 }}>Total Modal Keluar</div>
+            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:900, fontSize:28, color:C.red }}>{formatRp(totalModal)}</div>
+            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, marginTop:4 }}>Peralatan + Renovasi + Sewa</div>
+          </div>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:'20px 24px' }}>
+            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, marginBottom:6, textTransform:'uppercase', letterSpacing:0.5 }}>Total Omzet Kumulatif</div>
+            <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:900, fontSize:28, color:C.green }}>{formatRp(totalOmzet)}</div>
+            <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, marginTop:4 }}>Semua Cash In</div>
+          </div>
+        </div>
+
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:28, marginBottom:24 }}>
+          <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white, marginBottom:20 }}>BREAK EVEN POINT</div>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10, flexWrap:'wrap', gap:8 }}>
+            <span style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>{formatRp(totalOmzet)} dari {formatRp(totalModal)} modal sudah kembali</span>
+            <span style={{ fontFamily:'Barlow Condensed, sans-serif', fontSize:22, fontWeight:700, color:bepPct>=100?C.green:C.blue }}>{Math.round(bepPct)}%</span>
+          </div>
+          <div style={{ background:C.card, borderRadius:8, height:20, overflow:'hidden', marginBottom:16 }}>
+            <div style={{ width:`${bepPct}%`, height:'100%', background:bepPct>=100?C.green:C.blue, borderRadius:8, transition:'width 0.5s ease' }} />
+          </div>
+          {bepPct>=100
+            ? <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.green }}>Modal sudah kembali sepenuhnya!</div>
+            : estMonthsLeft!==null
+              ? <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.amber }}>Estimasi balik modal: ~{estMonthsLeft} bulan lagi (rata-rata {formatRp(Math.round(avgMonthlyRev))}/bulan)</div>
+              : <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>Belum cukup data untuk estimasi</div>
+          }
+        </div>
+
+        <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:18, color:C.white, marginBottom:14 }}>RINCIAN MODAL</div>
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, overflow:'auto', marginBottom:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', minWidth:480 }}>
+            <thead><tr style={{ background:C.card }}>{['Tanggal','Keterangan','Kategori','Jumlah'].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+            <tbody>
+              {modalEntries.length===0
+                ? <tr><td colSpan={4} style={{ padding:32, textAlign:'center', fontFamily:'Barlow, sans-serif', fontSize:14, color:C.muted }}>Belum ada data modal</td></tr>
+                : [...modalEntries].sort((a,b)=>b.date.localeCompare(a.date)).map(e => {
+                    const cat = catById(e.category)
+                    return (
+                      <tr key={e.id} style={{ borderBottom:`1px solid ${C.border}` }}>
+                        <td style={{ padding:'12px 16px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, whiteSpace:'nowrap' }}>{fmtDate(e.date)}</td>
+                        <td style={{ padding:'12px 16px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.white }}>{e.description}</td>
+                        <td style={{ padding:'12px 16px' }}>
+                          {cat ? <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:4, background:C.card, border:`1px solid ${C.border}`, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:cat.color }}>{cat.label}</span>
+                               : <span style={{ color:C.muted, fontSize:12 }}>—</span>}
+                        </td>
+                        <td style={{ padding:'12px 16px', fontFamily:'Barlow Condensed, sans-serif', fontSize:16, fontWeight:700, color:C.red }}>{formatRp(e.amount)}</td>
+                      </tr>
+                    )
+                  })
+              }
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted }}>Data modal diambil dari Cash Log kategori Peralatan & Mesin, Renovasi & Bangunan, Sewa & Utilitas</div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Finance: Lap. Bulanan Tab ── */
+function LapBulananTab({ cashlog, transactions, members }) {
+  const isMobile  = useIsMobile()
+  const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+  const now = new Date()
+
+  const [selectedMonth, setSelectedMonth] = useState(now.toISOString().slice(0,7))
+  const [generated,     setGenerated]     = useState(false)
+
+  const [yr, mo] = selectedMonth.split('-').map(Number)
+  const monthLabel = `${MONTHS_ID[mo-1]} ${yr}`
+
+  const monthOptions = []
+  for (let i=0; i<13; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1)
+    monthOptions.push({ val:d.toISOString().slice(0,7), label:`${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}` })
+  }
+
+  const monthTrx  = transactions.filter(t=>t.date.startsWith(selectedMonth))
+  const monthCash = cashlog.filter(e=>e.date.startsWith(selectedMonth))
+
+  const totalOmzet     = monthCash.filter(e=>e.type==='in').reduce((s,e)=>s+e.amount, 0)
+  const totalPengeluar = monthCash.filter(e=>e.type==='out').reduce((s,e)=>s+e.amount, 0)
+  const netProfit      = totalOmzet - totalPengeluar
+  const jumlahTrx      = monthTrx.length
+  const memberBaru     = members.filter(m=>m.joinDate&&m.joinDate.startsWith(selectedMonth)).length
+
+  const catBreakdown = {}
+  monthCash.filter(e=>e.type==='out').forEach(e => {
+    const cat   = catById(e.category)
+    const label = cat ? cat.label : 'Lainnya'
+    catBreakdown[label] = (catBreakdown[label]||0) + e.amount
+  })
+  const catArr = Object.entries(catBreakdown).sort((a,b)=>b[1]-a[1])
+
+  const motorPerf = {}
+  monthTrx.filter(t=>!t.isVoucherRedemption).forEach(t => {
+    const n = t.motorType?.name || 'Lainnya'
+    if (!motorPerf[n]) motorPerf[n] = { qty:0, omzet:0 }
+    motorPerf[n].qty++; motorPerf[n].omzet += (t.totalAmount||t.amount||0)
+  })
+  const motorArr = Object.entries(motorPerf).sort((a,b)=>b[1].qty-a[1].qty)
+
+  const memberWash = {}
+  monthTrx.forEach(t => {
+    if (!t.memberId) return
+    if (!memberWash[t.memberId]) memberWash[t.memberId] = { name:t.memberName||t.plate, plate:t.plate, count:0 }
+    memberWash[t.memberId].count++
+  })
+  const top5 = Object.values(memberWash).sort((a,b)=>b.count-a.count).slice(0,5)
+
+  const createdOn = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'})
+
+  const printCSS = `@media print {
+    body * { visibility: hidden !important; }
+    #smw-report, #smw-report * { visibility: visible !important; }
+    #smw-report { position: fixed !important; inset: 0 !important; background: white !important; color: #111 !important; padding: 32px !important; z-index: 99999 !important; overflow: auto !important; }
+    #smw-report * { color: #111 !important; background: transparent !important; border-color: #ccc !important; }
+    #smw-report .rpt-muted { color: #555 !important; }
+    #smw-report .rpt-accent { color: #111 !important; font-weight: 700 !important; }
+  }`
+
+  const thP = { padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:700, color:'#555', textTransform:'uppercase', background:'#f5f5f5', borderBottom:'1px solid #ddd' }
+  const tdP = (color) => ({ padding:'10px 12px', fontSize:13, color:color||'#111', borderBottom:'1px solid #eee', fontFamily:'Barlow, sans-serif' })
+
+  return (
+    <div style={{ padding:isMobile?'16px':'40px 24px', background:C.bg, minHeight:'100vh' }}>
+      <style dangerouslySetInnerHTML={{ __html:printCSS }} />
+      <div style={{ maxWidth:900, margin:'0 auto' }}>
+        <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:isMobile?22:28, color:C.white, letterSpacing:1, marginBottom:24 }}>LAPORAN BULANAN</div>
+
+        <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:24, marginBottom:24 }}>
+          <div style={{ display:'flex', gap:12, alignItems:'flex-end', flexWrap:'wrap' }}>
+            <div>
+              {lbl('Periode')}
+              <select value={selectedMonth} onChange={e=>{setSelectedMonth(e.target.value);setGenerated(false)}}
+                style={{ ...inputBase, width:'auto', padding:'7px 12px', fontSize:13, cursor:'pointer' }}>
+                {monthOptions.map(o=><option key={o.val} value={o.val}>{o.label}</option>)}
+              </select>
+            </div>
+            <button onClick={()=>setGenerated(true)} style={{ ...btnRed, width:'auto', padding:'11px 28px' }}>Generate Laporan</button>
+            {generated && (
+              <button onClick={()=>window.print()} style={{ background:'none', border:`1px solid ${C.border}`, color:C.muted, cursor:'pointer', padding:'11px 24px', borderRadius:8, fontFamily:'Barlow, sans-serif', fontSize:14, fontWeight:600 }}>
+                Download / Print
+              </button>
+            )}
+          </div>
+        </div>
+
+        {generated && (
+          <div id="smw-report" style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:32 }}>
+            {/* Header */}
+            <div style={{ borderBottom:`2px solid ${C.border}`, paddingBottom:20, marginBottom:24 }}>
+              <img src={logoBlack} alt="SMW" style={{ height:40, marginBottom:12, display:'block' }} />
+              <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:22, color:C.white, letterSpacing:1 }}>LAPORAN KEUANGAN BULANAN</div>
+              <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>Salmon Moto Wash — Sukatani, Depok</div>
+              <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>Periode: {monthLabel}</div>
+            </div>
+
+            {/* Ringkasan */}
+            <div style={{ marginBottom:24 }}>
+              <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:16, color:C.white, marginBottom:12, letterSpacing:0.5 }}>RINGKASAN KEUANGAN</div>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <tbody>
+                  {[
+                    ['Total Omzet', formatRp(totalOmzet), C.green],
+                    ['Total Pengeluaran', formatRp(totalPengeluar), C.red],
+                    ['Net Profit/Loss', formatRp(netProfit), netProfit>=0?C.green:C.red],
+                    ['Jumlah Transaksi', `${jumlahTrx} transaksi`, C.white],
+                    ['Member Baru', `${memberBaru} member`, C.white],
+                  ].map(([label,value,color])=>(
+                    <tr key={label} style={{ borderBottom:`1px solid ${C.border}` }}>
+                      <td style={{ padding:'10px 0', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, width:'55%' }}>{label}</td>
+                      <td style={{ padding:'10px 0', fontFamily:'Barlow Condensed, sans-serif', fontSize:16, fontWeight:700, color }}>{value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Breakdown pengeluaran */}
+            {catArr.length>0 && (
+              <div style={{ marginBottom:24 }}>
+                <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:16, color:C.white, marginBottom:12, letterSpacing:0.5 }}>BREAKDOWN PENGELUARAN PER KATEGORI</div>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead><tr style={{ background:C.card }}>{['Kategori','Jumlah','%'].map(h=><th key={h} style={{ padding:'8px 12px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase' }}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {catArr.map(([cat,amt])=>(
+                      <tr key={cat} style={{ borderBottom:`1px solid ${C.border}` }}>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.white }}>{cat}</td>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow Condensed, sans-serif', fontSize:15, fontWeight:700, color:C.red }}>{formatRp(amt)}</td>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>{totalPengeluar>0?Math.round(amt/totalPengeluar*100):0}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Performa layanan */}
+            {motorArr.length>0 && (
+              <div style={{ marginBottom:24 }}>
+                <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:16, color:C.white, marginBottom:12, letterSpacing:0.5 }}>PERFORMA LAYANAN</div>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead><tr style={{ background:C.card }}>{['Tipe Motor','Qty','Omzet'].map(h=><th key={h} style={{ padding:'8px 12px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase' }}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {motorArr.map(([name,{qty,omzet}])=>(
+                      <tr key={name} style={{ borderBottom:`1px solid ${C.border}` }}>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.white }}>{name}</td>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow Condensed, sans-serif', fontSize:15, fontWeight:700, color:C.white }}>{qty}</td>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow Condensed, sans-serif', fontSize:15, fontWeight:700, color:C.green }}>{formatRp(omzet)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Top 5 */}
+            {top5.length>0 && (
+              <div style={{ marginBottom:24 }}>
+                <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:16, color:C.white, marginBottom:12, letterSpacing:0.5 }}>TOP 5 PELANGGAN SETIA</div>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead><tr style={{ background:C.card }}>{['Nama','Plat','Jumlah Cuci'].map(h=><th key={h} style={{ padding:'8px 12px', textAlign:'left', fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase' }}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {top5.map(m=>(
+                      <tr key={m.plate} style={{ borderBottom:`1px solid ${C.border}` }}>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow, sans-serif', fontSize:13, color:C.white }}>{m.name}</td>
+                        <td style={{ padding:'10px 12px', fontFamily:'Courier New, monospace', fontSize:13, color:C.muted }}>{m.plate}</td>
+                        <td style={{ padding:'10px 12px', fontFamily:'Barlow Condensed, sans-serif', fontSize:15, fontWeight:700, color:C.white }}>{m.count}x</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:20, display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:24 }}>
+              <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted }}>Dibuat pada: {createdOn}</div>
+              <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted }}>
+                <div style={{ marginBottom:40 }}>Tanda Tangan Owner:</div>
+                <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:4, minWidth:180, textAlign:'center' }}>(nama owner)</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Finance Page (tab container) ── */
+function FinancePage({ cashlog, addCashLog, updateCashLog, deleteCashLog, transactions, members, targets, addTarget, updateTarget, currentUser, writeAuditLog, addToast }) {
+  const [tab, setTab] = useState('cashlog')
+  const FIN_TABS = [
+    { id:'cashlog', label:'Cash Log'    },
+    { id:'laporan', label:'Laporan'     },
+    { id:'target',  label:'Target'      },
+    { id:'modal',   label:'Modal & Aset'},
+    { id:'bulanan', label:'Lap. Bulanan'},
+  ]
+  return (
+    <div>
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:'0 24px', display:'flex', gap:0, overflowX:'auto' }}>
+        {FIN_TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{ background:'none', border:'none', borderBottom:tab===t.id?`2px solid ${C.blue}`:'2px solid transparent', color:tab===t.id?C.white:C.muted, cursor:'pointer', padding:'14px 18px', fontFamily:'Barlow, sans-serif', fontWeight:600, fontSize:14, whiteSpace:'nowrap', transition:'all 0.15s' }}>{t.label}</button>
+        ))}
+      </div>
+      {tab==='cashlog' && <CashLogPage cashlog={cashlog} addCashLog={addCashLog} updateCashLog={updateCashLog} deleteCashLog={deleteCashLog} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
+      {tab==='laporan' && <LaporanTab  cashlog={cashlog} transactions={transactions} />}
+      {tab==='target'  && <TargetTab   cashlog={cashlog} targets={targets} addTarget={addTarget} updateTarget={updateTarget} />}
+      {tab==='modal'   && <ModalAsetTab cashlog={cashlog} />}
+      {tab==='bulanan' && <LapBulananTab cashlog={cashlog} transactions={transactions} members={members} />}
+    </div>
+  )
 }
 
 /* ── App Root ── */
@@ -2144,6 +2718,7 @@ export default function App() {
   const [cashlog,      setCashlog]      = useState([])
   const [motorTypes,   setMotorTypes]   = useState([])
   const [workers,      setWorkers]      = useState([])
+  const [targets,      setTargets]      = useState([])
   const [auditLog,     setAuditLog]     = useState([])
   const [dataLoaded,   setDataLoaded]   = useState(false)
   const [currentUser,  setCurrentUser]  = useState(() => { try { const s = localStorage.getItem('smw_session'); return s ? JSON.parse(s) : null } catch { return null } })
@@ -2154,10 +2729,11 @@ export default function App() {
     const unsubs = []
     const init = async () => {
       try {
-        const [loadedUsers, loadedMotorTypes, loadedWorkers] = await Promise.all([
+        const [loadedUsers, loadedMotorTypes, loadedWorkers, loadedTargets] = await Promise.all([
           getAll('users'),
           getAll('motorTypes'),
           getAll('workers'),
+          getAll('targets'),
         ])
 
         if (loadedUsers.length === 0) {
@@ -2175,6 +2751,7 @@ export default function App() {
         }
 
         setWorkers(loadedWorkers)
+        setTargets(loadedTargets)
 
         unsubs.push(listenTo('members',      setMembers))
         unsubs.push(listenTo('transactions', setTransactions))
@@ -2237,6 +2814,10 @@ export default function App() {
   const deleteWorker = (id) => { deleteItem('workers',id);   setWorkers(p=>p.filter(w=>w.id!==id)) }
   const toggleWorker = (id) => { const w=workers.find(x=>x.id===id); if(!w)return; const nw={...w,active:!w.active}; setItem('workers',id,nw); setWorkers(p=>p.map(x=>x.id===id?nw:x)) }
 
+  /* targets — load-once; manual setState + Firestore write */
+  const addTarget    = (t) => { setItem('targets', t.id, t); setTargets(p => [...p, t]) }
+  const updateTarget = (t) => { setItem('targets', t.id, t); setTargets(p => p.map(x => x.id===t.id ? t : x)) }
+
   /* auditLog — in-memory only (not persisted to Firestore) */
   const writeAuditLog = (module, action, target, changes) => {
     if (!currentUser) return
@@ -2266,7 +2847,7 @@ export default function App() {
       {page==='dashboard'  && can('dashboard')  && <DashboardPage members={members} transactions={transactions} workers={workers} />}
       {page==='member'     && can('member')     && <MemberPage    members={members} transactions={transactions} />}
       {page==='riwayat'    && can('riwayat')    && <RiwayatPage   transactions={transactions} completeTransaction={completeTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} motorTypes={motorTypes} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
-      {page==='finance'    && can('finance')    && <FinancePage   cashlog={cashlog} addCashLog={addCashLog} updateCashLog={updateCashLog} deleteCashLog={deleteCashLog} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
+      {page==='finance'    && can('finance')    && <FinancePage   cashlog={cashlog} addCashLog={addCashLog} updateCashLog={updateCashLog} deleteCashLog={deleteCashLog} transactions={transactions} members={members} targets={targets} addTarget={addTarget} updateTarget={updateTarget} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
       {page==='pengaturan' && can('pengaturan') && <SettingsPage  users={users} addUser={addUser} updateUser={updateUser} deleteUser={deleteUser} motorTypes={motorTypes} addMotorType={addMotorType} updateMotorType={updateMotorType} deleteMotorType={deleteMotorType} toggleMotorType={toggleMotorType} workers={workers} addWorker={addWorker} updateWorker={updateWorker} deleteWorker={deleteWorker} toggleWorker={toggleWorker} auditLog={auditLog} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
     </div>
   )
