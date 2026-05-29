@@ -288,7 +288,7 @@ function generateReceiptHtml(trx, member, logoAbsUrl) {
 <div class="ss"></div>
 <table>
   <tr><td>No. Resi</td><td>${trx.id}</td></tr>
-  <tr><td>No. Antrian</td><td style="font-size:18px;font-weight:bold;color:#E8372A">Q-${String(trx.queueNumber||0).padStart(2,'0')}</td></tr>
+  <tr><td>No. Antrian</td><td style="font-size:18px;font-weight:bold;color:#E8372A">Q-${String(trx.queueNumber??1).padStart(2,'0')}</td></tr>
   <tr><td>Kasir</td><td>${trx.kasir}</td></tr>
 </table>
 <div class="ss"></div>
@@ -407,7 +407,7 @@ function KasirPage({ members, transactions, addTransaction, updateMember, addMem
     return svcPrice + additionals.reduce((sum,k) => sum + (ADDITIONALS_LIST.find(a=>a.key===k)?.price||0), 0)
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!selectedWorker)                             { addToast('Pilih pekerja','error');             return }
     if (!selectedMotor)                              { addToast('Pilih jenis motor','error');         return }
     if (payment==='voucher' && foundMember.vouchers<1) { addToast('Voucher tidak tersedia','error'); return }
@@ -426,9 +426,10 @@ function KasirPage({ members, transactions, addTransaction, updateMember, addMem
       isVoucherRedemption:payment==='voucher', earnedVoucher, kasir:user.name,
     }
     const updatedMember = { ...foundMember, washCount:newWashCount, vouchers:newVouchers, totalSpent:foundMember.totalSpent+totalAmount }
-    addTransaction(trx); updateMember(updatedMember)
-    setLastTrx(trx); setLastMember(updatedMember)
-    printReceipt(trx, updatedMember)
+    const savedTrx = await addTransaction(trx)
+    updateMember(updatedMember)
+    setLastTrx(savedTrx); setLastMember(updatedMember)
+    printReceipt(savedTrx, updatedMember)
     setStep('receipt')
     if (earnedVoucher) addToast(`Selamat! ${foundMember.name} dapat 1 voucher gratis!`, 'success')
   }
@@ -2820,10 +2821,12 @@ export default function App() {
   const updateMember = (m) => setItem('members', m.id, m)
 
   /* transactions — realtime listener keeps state in sync */
-  const addTransaction = (t) => {
-    const queueNumber = transactions.filter(tx => tx.date === t.date).length + 1
+  const addTransaction = async (t) => {
+    const allTrx      = await getAll('transactions')
+    const queueNumber = allTrx.filter(tx => tx.date === t.date).length + 1
     const newT = { ...t, queueNumber, status:'menunggu', createdAt:new Date().toISOString(), completedAt:null, rating:null, notes:t.notes||null }
-    setItem('transactions', newT.id, newT)
+    await setItem('transactions', newT.id, newT)
+    return newT
   }
   const completeTransaction = (id, rating) => {
     const t = transactions.find(x => x.id === id)
