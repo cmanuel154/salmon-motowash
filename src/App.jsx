@@ -2822,8 +2822,8 @@ export default function App() {
 
   /* transactions — realtime listener keeps state in sync */
   const addTransaction = async (t) => {
-    const allTrx      = await getAll('transactions')
-    const queueNumber = allTrx.filter(tx => tx.date === t.date).length + 1
+    const today = t.date.slice(0, 10)
+    const queueNumber = transactions.filter(tx => tx.date?.slice(0, 10) === today).length + 1
     const newT = { ...t, queueNumber, status:'menunggu', createdAt:new Date().toISOString(), completedAt:null, rating:null, notes:t.notes||null }
     await setItem('transactions', newT.id, newT)
     return newT
