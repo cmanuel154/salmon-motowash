@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from 'react'
 import { getAll, setItem, updateItem, deleteItem, listenTo, queryWhere } from './db'
-import { LayoutDashboard, ShoppingCart, Users, History, Wallet, Settings } from 'lucide-react'
+import { LayoutDashboard, ShoppingCart, Users, History, Wallet, Settings, Monitor } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import logo from './assets/logo.png'
 import logoBlack from './assets/logo - black.png'
@@ -24,6 +24,7 @@ const ALL_TABS = [
   { key:'kasir',      label:'Kasir',      Icon:ShoppingCart    },
   { key:'member',     label:'Member',     Icon:Users           },
   { key:'riwayat',    label:'Riwayat',    Icon:History         },
+  { key:'display',    label:'Display',    Icon:Monitor, permKey:'kasir' },
   { key:'finance',    label:'Finance',    Icon:Wallet          },
   { key:'pengaturan', label:'Pengaturan', Icon:Settings        },
 ]
@@ -171,7 +172,7 @@ function InstallBanner() {
 function Nav({ user, page, setPage, logout }) {
   const isMobile = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const tabs = ALL_TABS.filter(t => user.permissions.includes(t.key))
+  const tabs = ALL_TABS.filter(t => user.permissions.includes(t.permKey || t.key))
   const navTo = (key) => { setPage(key); setDrawerOpen(false) }
 
   if (isMobile) return (
@@ -350,7 +351,7 @@ function RatingModal({ trx, onComplete, onClose }) {
 }
 
 /* ── KasirPage ── */
-function KasirPage({ members, transactions, addTransaction, updateMember, addMember, addCashLog, motorTypes, workers, completeTransaction, user, addToast }) {
+function KasirPage({ members, transactions, addTransaction, updateMember, addMember, addCashLog, motorTypes, workers, startTransaction, completeTransaction, user, addToast }) {
   const isMobile = useIsMobile()
   const [step,        setStep]        = useState('input')
   const [plate,       setPlate]       = useState('')
@@ -809,6 +810,7 @@ function KasirPage({ members, transactions, addTransaction, updateMember, addMem
                     const pm = PM_BADGE[t.payment] || { bg:C.card, color:C.muted }
                     const isV = t.isVoucherRedemption
                     const isDone = t.status === 'selesai'
+                    const isCuci = t.status === 'mencuci'
                     return (
                       <tr key={t.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'transparent':'rgba(255,255,255,0.015)' }}>
                         <td style={{ padding:'10px 14px', fontFamily:'Barlow Condensed, sans-serif', fontSize:15, fontWeight:700, color:C.muted }}>{t.time}</td>
@@ -829,6 +831,8 @@ function KasirPage({ members, transactions, addTransaction, updateMember, addMem
                         <td style={{ padding:'10px 14px' }}>
                           {isDone
                             ? <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:4, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, background:'#0a1a0a', color:C.green }}>Selesai</span>
+                            : isCuci
+                            ? <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:4, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, background:'#0a1428', color:C.blue }}>Mencuci</span>
                             : <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:4, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, background:'#1a1200', color:C.amber }}>Menunggu</span>
                           }
                         </td>
@@ -841,7 +845,10 @@ function KasirPage({ members, transactions, addTransaction, updateMember, addMem
                           {isV ? 'Gratis' : formatRp(t.totalAmount||t.amount)}
                         </td>
                         <td style={{ padding:'10px 14px' }}>
-                          {!isDone && (
+                          {!isDone && !isCuci && (
+                            <button onClick={()=>startTransaction?.(t.id)} style={{ background:'none', border:`1px solid ${C.blue}`, color:C.blue, cursor:'pointer', padding:'4px 12px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:12, fontWeight:700, whiteSpace:'nowrap', minHeight:32 }}>🚿 Cuci</button>
+                          )}
+                          {isCuci && (
                             <button onClick={()=>setRatingTarget(t)} style={{ background:'none', border:`1px solid ${C.green}`, color:C.green, cursor:'pointer', padding:'4px 12px', borderRadius:6, fontFamily:'Barlow, sans-serif', fontSize:12, fontWeight:700, whiteSpace:'nowrap', minHeight:32 }}>✓ Selesai</button>
                           )}
                         </td>
@@ -1258,7 +1265,7 @@ function TrxEditModal({ trx, motorTypes, onSave, onClose, addToast }) {
           <div>{lbl('Catatan')}<input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Catatan motor" style={inputBase} /></div>
           <div>{lbl('Kasir')}<input value={kasir} onChange={e=>setKasir(e.target.value)} style={inputBase} /></div>
           <div>{lbl('Status')}<select value={status} onChange={e=>setStatus(e.target.value)} style={{ ...inputBase, cursor:'pointer' }}>
-            <option value="menunggu">Menunggu</option><option value="selesai">Selesai</option>
+            <option value="menunggu">Menunggu</option><option value="mencuci">Mencuci</option><option value="selesai">Selesai</option>
           </select></div>
           <div style={{ display:'flex', gap:10, marginTop:4 }}>
             <button onClick={onClose} style={btnGhost}>Batal</button>
@@ -1335,6 +1342,8 @@ function RiwayatPage({ transactions, completeTransaction, updateTransaction, del
                       <td style={{ padding:'12px 16px' }}>
                         {t.status==='selesai'
                           ? <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:4, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, background:'#0a1a0a', color:C.green }}>Selesai</span>
+                          : t.status==='mencuci'
+                          ? <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:4, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, background:'#0a1428', color:C.blue }}>Mencuci</span>
                           : <span style={{ display:'inline-block', padding:'2px 10px', borderRadius:4, fontFamily:'Barlow, sans-serif', fontSize:11, fontWeight:700, background:'#1a1200', color:C.amber }}>Menunggu</span>
                         }
                         {t.status!=='selesai' && completeTransaction && (
@@ -2752,6 +2761,73 @@ function FinancePage({ cashlog, addCashLog, updateCashLog, deleteCashLog, transa
   )
 }
 
+/* ── Display Page ── */
+function DisplayPage({ transactions, workers }) {
+  const today = todayStr()
+  const todayTrx = transactions.filter(t => t.date?.slice(0,10) === today)
+
+  const antrian  = [...todayTrx.filter(t=>t.status==='menunggu')].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))
+  const pencucian= [...todayTrx.filter(t=>t.status==='mencuci')].sort((a,b)=>(a.startedAt||'').localeCompare(b.startedAt||''))
+  const selesai  = [...todayTrx.filter(t=>t.status==='selesai')].sort((a,b)=>(b.completedAt||'').localeCompare(a.completedAt||'')).slice(0,10)
+
+  const now = new Date()
+  const MONTHS_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']
+  const dateLabel = `${String(now.getDate()).padStart(2,'0')} ${MONTHS_ID[now.getMonth()]} ${now.getFullYear()}`
+
+  const QCard = ({ t, qColor, timeField }) => {
+    const w  = workers.find(x => x.id === t.workerId)
+    const ts = t[timeField]
+    const tLabel = ts ? new Date(ts).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : t.time
+    return (
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'12px 14px', marginBottom:8 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+          <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:900, fontSize:26, color:qColor, letterSpacing:1 }}>
+            Q-{String(t.queueNumber??1).padStart(2,'0')}
+          </div>
+          <div style={{ fontFamily:'Barlow, sans-serif', fontSize:11, color:C.muted }}>{tLabel}</div>
+        </div>
+        <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:17, color:C.white, letterSpacing:0.5 }}>{t.plate}</div>
+        <div style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.muted, marginTop:1 }}>{t.motorType?.name || '—'}</div>
+        {w && (
+          <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6 }}>
+            <WorkerAvatar worker={w} size={18} />
+            <span style={{ fontFamily:'Barlow, sans-serif', fontSize:12, color:C.white }}>{w.name}</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const Column = ({ title, items, qColor, timeField, accent }) => (
+    <div style={{ flex:'1 1 0', minWidth:0 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, paddingBottom:10, borderBottom:`2px solid ${accent}` }}>
+        <span style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:15, color:C.white, letterSpacing:1 }}>{title}</span>
+        <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background:accent, fontFamily:'Barlow Condensed, sans-serif', fontWeight:700, fontSize:12, color:'#fff', flexShrink:0 }}>{items.length}</span>
+      </div>
+      {items.length===0
+        ? <div style={{ fontFamily:'Barlow, sans-serif', fontSize:13, color:C.muted, textAlign:'center', padding:'24px 0' }}>—</div>
+        : items.map(t => <QCard key={t.id} t={t} qColor={qColor} timeField={timeField} />)
+      }
+    </div>
+  )
+
+  return (
+    <div style={{ padding:'20px 16px', background:C.bg, minHeight:'100vh' }}>
+      <div style={{ maxWidth:1200, margin:'0 auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div style={{ fontFamily:'Barlow Condensed, sans-serif', fontWeight:800, fontSize:28, color:C.white, letterSpacing:2 }}>ANTRIAN HARI INI</div>
+          <div style={{ fontFamily:'Barlow, sans-serif', fontSize:14, color:C.muted }}>{dateLabel}</div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+          <Column title="ANTRIAN"   items={antrian}   qColor={C.red}   accent={C.red}   timeField="createdAt"   />
+          <Column title="PENCUCIAN" items={pencucian} qColor={C.blue}  accent={C.blue}  timeField="startedAt"   />
+          <Column title="SELESAI"   items={selesai}   qColor={C.green} accent={C.green} timeField="completedAt" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── App Root ── */
 export default function App() {
   const [users,        setUsers]        = useState([])
@@ -2827,6 +2903,9 @@ export default function App() {
     const newT = { ...t, queueNumber, status:'menunggu', createdAt:new Date().toISOString(), completedAt:null, rating:null, notes:t.notes||null }
     await setItem('transactions', newT.id, newT)
     return newT
+  }
+  const startTransaction = (id) => {
+    updateItem('transactions', id, { status:'mencuci', startedAt:new Date().toISOString() })
   }
   const completeTransaction = (id, rating) => {
     const t = transactions.find(x => x.id === id)
@@ -2919,7 +2998,8 @@ export default function App() {
       <Toast toasts={toasts} />
       <InstallBanner />
       <Nav user={currentUser} page={page} setPage={setPage} logout={logout} />
-      {page==='kasir'      && can('kasir')      && <KasirPage     members={members} transactions={transactions} addTransaction={addTransaction} updateMember={updateMember} addMember={addMember} addCashLog={addCashLog} motorTypes={motorTypes} workers={workers} completeTransaction={completeTransaction} user={currentUser} addToast={addToast} />}
+      {page==='kasir'      && can('kasir')      && <KasirPage     members={members} transactions={transactions} addTransaction={addTransaction} updateMember={updateMember} addMember={addMember} addCashLog={addCashLog} motorTypes={motorTypes} workers={workers} startTransaction={startTransaction} completeTransaction={completeTransaction} user={currentUser} addToast={addToast} />}
+      {page==='display'    && can('kasir')      && <DisplayPage   transactions={transactions} workers={workers} />}
       {page==='dashboard'  && can('dashboard')  && <DashboardPage members={members} transactions={transactions} workers={workers} />}
       {page==='member'     && can('member')     && <MemberPage    members={members} transactions={transactions} />}
       {page==='riwayat'    && can('riwayat')    && <RiwayatPage   transactions={transactions} completeTransaction={completeTransaction} updateTransaction={updateTransaction} deleteTransaction={deleteTransaction} motorTypes={motorTypes} currentUser={currentUser} writeAuditLog={writeAuditLog} addToast={addToast} />}
