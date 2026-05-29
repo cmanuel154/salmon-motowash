@@ -2982,7 +2982,10 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (currentUser && !currentUser.permissions.includes(page)) setPage(currentUser.permissions[0])
+    if (!currentUser) return
+    const tab = ALL_TABS.find(t => t.key === page)
+    const effectivePerm = tab?.permKey || page
+    if (!currentUser.permissions.includes(effectivePerm)) setPage(currentUser.permissions[0])
   }, [currentUser, page])
 
   if (!dataLoaded) return (
