@@ -421,12 +421,17 @@ export default function DisplayPage({ showToast }) {
               style={{
                 width: 300,
                 flexShrink: 0,
+                position: "sticky",
+                top: 80,
+                alignSelf: "flex-start",
+              }}
+            >
+            <div
+              style={{
                 background: C.surface,
                 border: "1px solid #2a2a2a",
                 borderRadius: 12,
                 overflow: "hidden",
-                position: "sticky",
-                top: 80,
               }}
             >
               {/* Panel Header */}
@@ -559,6 +564,7 @@ export default function DisplayPage({ showToast }) {
                   </button>
                 </div>
               )}
+            </div>
             </div>
           )}
         </div>
