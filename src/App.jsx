@@ -370,7 +370,7 @@ function KasirPage({ members, transactions, addTransaction, updateMember, addMem
 
   const reset = () => {
     setStep('input'); setPlate(''); setSuggestions([]); setFoundMember(null)
-    setRegName(''); setRegPhone(''); setSelectedMotor(null); setSelectedWorker(null)
+    setRegName(''); setRegPhone(''); setSelectedMotor(null)
     setNotes(''); setAdditionals([]); setPayment('cash'); setLastTrx(null); setLastMember(null)
   }
 
