@@ -51,9 +51,7 @@ export default function DisplayPage({ showToast }) {
   const [transactions, setTransactions] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [selected, setSelected] = useState(null); // selected transaction
-  const [showWorkerModal, setShowWorkerModal] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState(null);
-  const [targetStatus, setTargetStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [pendingRating, setPendingRating] = useState(null);
@@ -108,14 +106,9 @@ export default function DisplayPage({ showToast }) {
     const cfg = STATUS_CONFIG[trx.status];
     if (!cfg || !cfg.next) return;
 
-    // Antri → Sedang Dicuci: perlu pilih pekerja
     if (trx.status === "menunggu") {
-      setTargetStatus("sedang_dicuci");
-      setSelectedWorker(trx.workerId || null);
-      setShowWorkerModal(true);
-    }
-    // Sedang Dicuci → Selesai
-    else if (trx.status === "sedang_dicuci") {
+      confirmWorkerAssign();
+    } else if (trx.status === "sedang_dicuci") {
       setPendingRating(trx);
       setRatingValue(0);
       setHoverRating(0);
@@ -139,7 +132,6 @@ export default function DisplayPage({ showToast }) {
       };
       await db.updateItem("transactions", selected.id, updates);
       showToast?.(`${worker.name} mulai mencuci ${selected.plate}`, "success");
-      setShowWorkerModal(false);
       setSelectedWorker(null);
       await loadData();
     } catch (e) {
@@ -534,6 +526,103 @@ export default function DisplayPage({ showToast }) {
                     valueColor="#22c55e"
                   />
                 )}
+
+                {/* Inline worker selection for menunggu cards */}
+                {selected.status === "menunggu" && (
+                  <div style={{ marginTop: 4 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#6b7280",
+                        fontFamily: "Barlow, sans-serif",
+                        fontWeight: 700,
+                        letterSpacing: 0.5,
+                        textTransform: "uppercase",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Pilih Pekerja
+                    </div>
+                    {workers.length === 0 ? (
+                      <div
+                        style={{
+                          color: "#6b7280",
+                          fontSize: 12,
+                          fontFamily: "Barlow, sans-serif",
+                          padding: "8px 0",
+                        }}
+                      >
+                        Tidak ada pekerja aktif
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {workers.map((w) => {
+                          const isActive = selectedWorker === w.id;
+                          const initials = w.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .toUpperCase()
+                            .slice(0, 2);
+                          return (
+                            <div
+                              key={w.id}
+                              onClick={() => setSelectedWorker(isActive ? null : w.id)}
+                              style={{
+                                background: isActive ? "rgba(59,159,212,0.15)" : "#1a1a1a",
+                                border: `2px solid ${isActive ? "#3B9FD4" : "#2a2a2a"}`,
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                transition: "all 0.15s",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: 30,
+                                  height: 30,
+                                  borderRadius: "50%",
+                                  overflow: "hidden",
+                                  background: "#2a2a2a",
+                                  flexShrink: 0,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color: "#3B9FD4",
+                                }}
+                              >
+                                {w.photo ? (
+                                  <img
+                                    src={w.photo}
+                                    alt={w.name}
+                                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                  />
+                                ) : (
+                                  initials
+                                )}
+                              </div>
+                              <span
+                                style={{
+                                  color: isActive ? "#3B9FD4" : "#d1d5db",
+                                  fontWeight: 600,
+                                  fontSize: 13,
+                                  fontFamily: "Barlow, sans-serif",
+                                }}
+                              >
+                                {w.name}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Action Button */}
@@ -541,26 +630,40 @@ export default function DisplayPage({ showToast }) {
                 <div style={{ padding: "0 20px 20px" }}>
                   <button
                     onClick={() => handleStatusAdvance(selected)}
-                    disabled={loading}
+                    disabled={
+                      loading ||
+                      (selected.status === "menunggu" && !selectedWorker)
+                    }
                     style={{
                       width: "100%",
                       background:
-                        selected.status === "sedang_dicuci"
-                          ? "#22c55e"
-                          : "#E8372A",
-                      color: "#fff",
+                        selected.status === "menunggu"
+                          ? selectedWorker
+                            ? "#E8372A"
+                            : "#2a2a2a"
+                          : "#22c55e",
+                      color:
+                        selected.status === "menunggu"
+                          ? selectedWorker
+                            ? "#fff"
+                            : "#6b7280"
+                          : "#fff",
                       border: "none",
                       borderRadius: 8,
                       padding: "12px",
                       fontFamily: "Barlow Condensed, sans-serif",
                       fontWeight: 700,
                       fontSize: 16,
-                      cursor: loading ? "not-allowed" : "pointer",
+                      cursor:
+                        loading || (selected.status === "menunggu" && !selectedWorker)
+                          ? "not-allowed"
+                          : "pointer",
                       letterSpacing: 0.5,
                       opacity: loading ? 0.6 : 1,
+                      transition: "all 0.15s",
                     }}
                   >
-                    {STATUS_CONFIG[selected.status]?.nextLabel}
+                    {loading ? "Menyimpan..." : STATUS_CONFIG[selected.status]?.nextLabel}
                   </button>
                 </div>
               )}
@@ -569,161 +672,6 @@ export default function DisplayPage({ showToast }) {
           )}
         </div>
       </div>
-
-      {/* Worker Assign Modal */}
-      {showWorkerModal && (
-        <ModalOverlay onClose={() => setShowWorkerModal(false)}>
-          <div style={{ padding: "24px 24px 20px" }}>
-            <h2
-              style={{
-                fontFamily: "Barlow Condensed, sans-serif",
-                fontWeight: 700,
-                fontSize: 20,
-                color: C.white,
-                margin: "0 0 4px",
-              }}
-            >
-              Mulai Cuci — {selected?.plate}
-            </h2>
-            <p style={{ color: C.muted, fontSize: 13, margin: "0 0 20px" }}>
-              Pilih pekerja yang akan mengerjakan
-            </p>
-
-            {workers.length === 0 ? (
-              <div
-                style={{
-                  color: C.muted,
-                  textAlign: "center",
-                  padding: "20px 0",
-                  fontSize: 13,
-                }}
-              >
-                Tidak ada pekerja aktif
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 10,
-                  marginBottom: 20,
-                }}
-              >
-                {workers.map((w) => {
-                  const isActive = selectedWorker === w.id;
-                  const initials = w.name
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")
-                    .toUpperCase()
-                    .slice(0, 2);
-                  return (
-                    <div
-                      key={w.id}
-                      onClick={() => setSelectedWorker(w.id)}
-                      style={{
-                        background: isActive
-                          ? "rgba(59,159,212,0.15)"
-                          : C.card,
-                        border: `2px solid ${isActive ? "#3B9FD4" : "#2a2a2a"}`,
-                        borderRadius: 8,
-                        padding: "12px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      {/* Avatar */}
-                      <div
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: "50%",
-                          overflow: "hidden",
-                          background: "#2a2a2a",
-                          flexShrink: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: "#3B9FD4",
-                        }}
-                      >
-                        {w.photo ? (
-                          <img
-                            src={w.photo}
-                            alt={w.name}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                            }}
-                          />
-                        ) : (
-                          initials
-                        )}
-                      </div>
-                      <div>
-                        <div
-                          style={{
-                            color: isActive ? "#3B9FD4" : C.white,
-                            fontWeight: 600,
-                            fontSize: 13,
-                          }}
-                        >
-                          {w.name}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => setShowWorkerModal(false)}
-                style={{
-                  flex: 1,
-                  background: C.card,
-                  border: "1px solid #2a2a2a",
-                  color: C.white,
-                  borderRadius: 8,
-                  padding: "11px",
-                  cursor: "pointer",
-                  fontFamily: "Barlow, sans-serif",
-                  fontSize: 14,
-                }}
-              >
-                Batal
-              </button>
-              <button
-                onClick={confirmWorkerAssign}
-                disabled={loading || !selectedWorker}
-                style={{
-                  flex: 2,
-                  background: selectedWorker ? "#E8372A" : "#2a2a2a",
-                  border: "none",
-                  color: selectedWorker ? "#fff" : C.muted,
-                  borderRadius: 8,
-                  padding: "11px",
-                  cursor: selectedWorker && !loading ? "pointer" : "not-allowed",
-                  fontFamily: "Barlow Condensed, sans-serif",
-                  fontWeight: 700,
-                  fontSize: 16,
-                  letterSpacing: 0.5,
-                  transition: "all 0.15s",
-                }}
-              >
-                {loading ? "Menyimpan..." : "Mulai Cuci"}
-              </button>
-            </div>
-          </div>
-        </ModalOverlay>
-      )}
 
       {/* Rating Modal */}
       {showRatingModal && pendingRating && (
